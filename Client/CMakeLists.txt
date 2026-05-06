@@ -43,6 +43,7 @@ set(SOURCES
     Backend/Controllers/HistoryController.cpp
     Backend/Controllers/ReportController.cpp
     Backend/Controllers/PhoneLinkController.cpp
+    Backend/Controllers/VoiceController.cpp    # <--- 신규 컨트롤러 추가됨
 
     # Backend - Models (QAbstractListModel)
     Backend/Models/PillCandidateListModel.cpp
@@ -85,6 +86,7 @@ set(HEADERS
     Backend/Controllers/HistoryController.h
     Backend/Controllers/ReportController.h
     Backend/Controllers/PhoneLinkController.h
+    Backend/Controllers/VoiceController.h      # <--- 신규 컨트롤러 헤더 추가됨
 
     Backend/Models/PillCandidateListModel.h
     Backend/Models/HistoryListModel.h
@@ -138,8 +140,17 @@ target_link_libraries(MediBridgeClient PRIVATE
     Qt6::Concurrent
 )
 
+# 💡 하위 디렉토리 경로들을 Include 경로로 모두 추가
 target_include_directories(MediBridgeClient PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/Backend/Controllers
+    ${CMAKE_CURRENT_SOURCE_DIR}/Backend/Models
+    ${CMAKE_CURRENT_SOURCE_DIR}/PhoneLink
+    ${CMAKE_CURRENT_SOURCE_DIR}/PhoneAdapter
+    ${CMAKE_CURRENT_SOURCE_DIR}/MainServerClient
+    ${CMAKE_CURRENT_SOURCE_DIR}/Threading
+    ${CMAKE_CURRENT_SOURCE_DIR}/Services
+    ${CMAKE_CURRENT_SOURCE_DIR}/Monitoring
 )
 
 # Windows: 콘솔 창 표시 (개발 중 로그 확인). 배포 시 FALSE → TRUE 변경

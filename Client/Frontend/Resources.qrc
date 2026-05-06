@@ -8,6 +8,7 @@
         <file>Pages/PillPoolPage.qml</file>
         <file>Pages/HistoryPage.qml</file>
         <file>Pages/ReportPage.qml</file>
+        <file>Pages/VoiceInputPage.qml</file>
         <file>Components/AppButton.qml</file>
         <file>Components/ConfidenceTierBadge.qml</file>
         <file>Components/DurAlertCard.qml</file>

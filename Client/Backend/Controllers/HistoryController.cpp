@@ -1,5 +1,5 @@
 #include "HistoryController.h"
-#include "../../MainServerClient/ApiClient.h"
+#include "ApiClient.h"
 
 namespace medibridge::controllers {
 

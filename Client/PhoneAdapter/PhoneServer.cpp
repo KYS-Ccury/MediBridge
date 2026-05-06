@@ -2,7 +2,7 @@
 // PhoneServer 구현 — 골격 (TODO 주석으로 남겨진 부분이 분담 작업)
 // =====================================================
 #include "PhoneServer.h"
-#include "../MainServerClient/ApiClient.h"
+#include "ApiClient.h"
 
 #include <QFile>
 #include <QHttpServerRequest>

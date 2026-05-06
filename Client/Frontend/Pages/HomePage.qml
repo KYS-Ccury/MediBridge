@@ -1,5 +1,5 @@
 // =====================================================
-// HomePage — 메인 화면 (촬영·약 풀·복약 이력·보고서 진입)
+// HomePage — UX 개선 (완전 중앙 정렬 및 여백 최적화)
 // =====================================================
 import QtQuick
 import QtQuick.Controls
@@ -9,114 +9,179 @@ import "../Components"
 
 Page {
     id: home_page
+    background: Rectangle { color: "#F8FAFF" }
 
     Connections {
         target: pill_controller
-        function onIdentify_succeeded() {
-            stack.push("IdentifyResultPage.qml")
-        }
-        function onIdentify_failed(error_code) {
-            app_controller.show_toast(qsTr("식별 실패: ") + error_code)
-        }
+        function onIdentify_succeeded() { stack.push("IdentifyResultPage.qml") }
+        function onIdentify_failed(error_code) { app_controller.show_toast(qsTr("식별 실패: ") + error_code) }
     }
 
+    // 최상위 컨테이너를 화면 정중앙에 고정
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: 24
-        spacing: 16
+        anchors.centerIn: parent
+        width: Math.min(parent.width * 0.9, 800) // 화면이 너무 넓어질 때 최대 가로 폭 제한 (UX 개선)
+        spacing: 36
 
-        Label {
-            text: qsTr("환영합니다, ") +
-                  (auth_controller.current_user_email || qsTr("사용자")) +
-                  qsTr(" 님")
-            font.pixelSize: 24
-            font.bold: true
+        // 1. 타이틀 섹션 (텍스트 자체의 중앙 정렬 강제)
+        ColumnLayout {
             Layout.alignment: Qt.AlignHCenter
-        }
-
-        Label {
-            text: qsTr("폰 카메라로 알약을 비춘 상태에서 아래 '촬영' 버튼을 누르세요.")
-            font.pixelSize: 14
-            wrapMode: Text.WordWrap
-            Layout.alignment: Qt.AlignHCenter
-            color: "#616161"
-        }
-
-        // ----- 폰 미연결 안내 -----
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 60
-            visible: !phone_link_controller.is_connected
-            color: "#FFF3E0"
-            border.color: "#FF9800"
-            radius: 8
+            spacing: 12
+            
+            Text { 
+                text: "💊"
+                font.pixelSize: 64
+                Layout.alignment: Qt.AlignHCenter 
+            }
+            
+            Label {
+                text: (auth_controller.current_user_email || qsTr("사용자")) + qsTr("님, 반갑습니다")
+                font.pixelSize: 18; color: "#7F8C8D"
+                horizontalAlignment: Text.AlignHCenter
+                Layout.alignment: Qt.AlignHCenter
+            }
 
             Label {
-                anchors.centerIn: parent
-                text: qsTr("⚠ 폰을 USB로 연결한 후 사용하세요.")
-                font.pixelSize: 16
-                color: "#E65100"
+                text: qsTr("복약 안전 도우미")
+                font.pixelSize: 34; font.bold: true
+                color: "#2C3E50"
+                horizontalAlignment: Text.AlignHCenter
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Label {
+                text: qsTr("알약을 촬영하거나 음성으로 물어보세요")
+                font.pixelSize: 16; color: "#95A5A6"
+                horizontalAlignment: Text.AlignHCenter
+                Layout.alignment: Qt.AlignHCenter
             }
         }
 
-        // ----- ⭐ 촬영 버튼 (가장 큰 액션) -----
-        AppButton {
-            text: pill_controller.is_loading
-                  ? qsTr("⏳ 처리 중...")
-                  : qsTr("📸 촬영 + 식별")
+        // 2. 메인 액션 카드 (컨텐츠 중앙 집중형)
+        ColumnLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 88
-            font.pixelSize: 26
-            enabled: phone_link_controller.is_connected && !pill_controller.is_loading
-            onClicked: pill_controller.capture_and_identify()
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: qsTr("폰 화면을 캡쳐하여 식별합니다 (사진은 폰 갤러리에 저장되지 않음).")
-            font.pixelSize: 12
-            color: "#9E9E9E"
-            horizontalAlignment: Text.AlignHCenter
-        }
-
-        // ----- 메뉴 그리드 -----
-        GridLayout {
             Layout.alignment: Qt.AlignHCenter
-            Layout.topMargin: 16
+            spacing: 20
+
+            ActionCard {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 100
+                iconSource: "🎙️"; iconBgColor: "#E8F5E9"
+                title: qsTr("음성으로 질문하기")
+                description: qsTr("\"이 약 뭐예요?\" 같은 질문을 해보세요")
+                onClicked: stack.push("VoiceInputPage.qml")
+            }
+
+            ActionCard {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 100
+                iconSource: "📷"; iconBgColor: "#E3F2FD"
+                title: qsTr("카메라로 직접 촬영")
+                description: qsTr("여러 개의 알약을 한번에 촬영할 수 있습니다")
+                enabled: phone_link_controller.is_connected && !pill_controller.is_loading
+                onClicked: pill_controller.capture_and_identify()
+            }
+        }
+
+        // 3. 하단 서브 메뉴 그리드 (그리드 전체를 중앙으로 배치)
+        GridLayout {
             columns: 2
             columnSpacing: 16
             rowSpacing: 16
+            Layout.alignment: Qt.AlignHCenter // 그리드를 왼쪽이 아닌 중앙으로 모음
 
-            AppButton {
-                text: qsTr("약 풀 관리")
-                variant: "secondary"
-                Layout.preferredWidth: 240
+            SubMenuCard {
+                title: qsTr("내 약 목록"); iconText: "📋"
                 onClicked: stack.push("PillPoolPage.qml")
             }
-
-            AppButton {
-                text: qsTr("복약 이력")
-                variant: "secondary"
-                Layout.preferredWidth: 240
+            SubMenuCard {
+                title: qsTr("복약 이력"); iconText: "🕒"
                 onClicked: stack.push("HistoryPage.qml")
             }
-
-            AppButton {
-                text: qsTr("통합 보고서")
-                variant: "secondary"
-                Layout.preferredWidth: 240
+            SubMenuCard {
+                title: qsTr("통합 보고서"); iconText: "📊"
                 onClicked: stack.push("ReportPage.qml")
             }
-
-            AppButton {
-                text: qsTr("최근 식별 결과")
-                variant: "secondary"
-                Layout.preferredWidth: 240
+            SubMenuCard {
+                title: qsTr("최근 식별 결과"); iconText: "🔍"
                 enabled: pill_controller.last_request_id.length > 0
                 onClicked: stack.push("IdentifyResultPage.qml")
             }
         }
 
-        Item { Layout.fillHeight: true }
+        // 4. 하단 상태 안내 바
+        Rectangle {
+            Layout.fillWidth: true; height: 56; radius: 12
+            color: "#F0F7FF"; border.color: "#D0E2FF"
+            
+            RowLayout {
+                anchors.centerIn: parent; spacing: 12
+                Text { text: "💡"; font.pixelSize: 20 }
+                Label {
+                    text: qsTr("음성 안내가 켜져 있습니다. 모든 안내를 소리로 들을 수 있습니다.")
+                    font.pixelSize: 15; color: "#1565C0"; font.bold: true
+                }
+            }
+        }
+    }
+
+    // --- 인라인 컴포넌트 교정: 내부 요소들까지 완벽히 중앙 정렬 ---
+    component ActionCard : Button {
+        property string iconSource: ""
+        property color iconBgColor: "white"
+        property string title: ""
+        property string description: ""
+
+        contentItem: RowLayout {
+            spacing: 24
+            Item { Layout.fillWidth: true } // 왼쪽 여백 밀어내기 (중앙 정렬 효과)
+            
+            Rectangle {
+                width: 64; height: 64; radius: 16
+                color: iconBgColor
+                Text { text: iconSource; font.pixelSize: 32; anchors.centerIn: parent }
+            }
+            
+            ColumnLayout {
+                spacing: 4
+                Label { 
+                    text: title; font.pixelSize: 20; font.bold: true; color: "#2C3E50" 
+                }
+                Label { 
+                    text: description; font.pixelSize: 15; color: "#95A5A6" 
+                }
+            }
+            
+            Item { Layout.fillWidth: true } // 오른쪽 여백 밀어내기 (중앙 정렬 효과)
+        }
+        
+        background: Rectangle {
+            color: "white"; radius: 20
+            border.color: parent.pressed ? "#3498DB" : "#EEEEEE"
+            border.width: parent.pressed ? 2 : 1
+            layer.enabled: true // 가벼운 그림자
+        }
+    }
+
+    component SubMenuCard : Button {
+        property string iconText: ""
+        property string title: ""
+        
+        // 서브 메뉴 카드의 크기를 고정하여 일관성 부여
+        Layout.preferredWidth: 220
+        Layout.preferredHeight: 64
+
+        contentItem: RowLayout {
+            spacing: 12
+            Item { Layout.fillWidth: true } // 좌우 대칭 여백
+            Text { text: iconText; font.pixelSize: 20 }
+            Label { text: title; font.pixelSize: 16; font.bold: true; color: "#2C3E50" }
+            Item { Layout.fillWidth: true } // 좌우 대칭 여백
+        }
+        
+        background: Rectangle {
+            color: "white"; radius: 16
+            border.color: parent.pressed ? "#3498DB" : "#EEEEEE"
+        }
     }
 }

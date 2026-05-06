@@ -1,6 +1,6 @@
 #include "PillController.h"
-#include "../../MainServerClient/ApiClient.h"
-#include "../../PhoneLink/PhoneCaptureService.h"
+#include "ApiClient.h"
+#include "PhoneCaptureService.h"
 
 #include <QLoggingCategory>
 

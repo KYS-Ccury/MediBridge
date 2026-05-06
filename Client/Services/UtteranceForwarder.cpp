@@ -1,5 +1,5 @@
 #include "UtteranceForwarder.h"
-#include "../MainServerClient/ApiClient.h"
+#include "ApiClient.h"
 
 #include <QLoggingCategory>
 
@@ -22,7 +22,8 @@ void UtteranceForwarder::forward(const QString& text,
     //   2. api_client_->speech().send_utterance(...)
     qInfo() << "[UtteranceForwarder] forward TODO ("
             << text << ", conf:" << stt_confidence << ", ctx:" << context << ")";
-
+    emit utterance_received(text, true);
+    
     if (api_client_) {
         api_client_->speech().send_utterance(text, stt_confidence, context, image_request_id,
             [callback](const QByteArray& resp, int status) {

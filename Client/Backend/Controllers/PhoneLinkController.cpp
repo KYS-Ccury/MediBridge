@@ -1,6 +1,6 @@
 #include "PhoneLinkController.h"
-#include "../../PhoneLink/AdbDeviceMonitor.h"
-#include "../../PhoneLink/AdbReverseManager.h"
+#include "AdbDeviceMonitor.h"
+#include "AdbReverseManager.h"
 
 #include <QLoggingCategory>
 

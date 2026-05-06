@@ -32,6 +32,9 @@ public:
                  const QString& image_request_id,
                  ForwardCallback callback);
 
+signals: 
+    void utterance_received(const QString& text, bool is_final);
+
 private:
     network::ApiClient* api_client_;
 };

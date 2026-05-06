@@ -16,32 +16,33 @@
 #include <QLoggingCategory>
 
 // Backend - Service
-#include "MainServerClient/ApiClient.h"
-#include "PhoneAdapter/PhoneServer.h"
-#include "Monitoring/ResourceMonitor.h"
-#include "Monitoring/HealthChecker.h"
-#include "Threading/WorkerPool.h"
-#include "Services/ImageForwarder.h"
-#include "Services/UtteranceForwarder.h"
+#include "ApiClient.h"
+#include "PhoneServer.h"
+#include "ResourceMonitor.h"
+#include "HealthChecker.h"
+#include "WorkerPool.h"
+#include "ImageForwarder.h"
+#include "UtteranceForwarder.h"
 
 // Backend - Controller (ViewModel)
-#include "Backend/Controllers/AppController.h"
-#include "Backend/Controllers/AuthController.h"
-#include "Backend/Controllers/PillController.h"
-#include "Backend/Controllers/HistoryController.h"
-#include "Backend/Controllers/ReportController.h"
-#include "Backend/Controllers/PhoneLinkController.h"
+#include "AppController.h"
+#include "AuthController.h"
+#include "PillController.h"
+#include "HistoryController.h"
+#include "ReportController.h"
+#include "PhoneLinkController.h"
+#include "VoiceController.h"
 
 // PhoneLink - USB 유선 연동 자동화
-#include "PhoneLink/AdbDeviceMonitor.h"
-#include "PhoneLink/AdbReverseManager.h"
-#include "PhoneLink/PhoneCaptureService.h"
+#include "AdbDeviceMonitor.h"
+#include "AdbReverseManager.h"
+#include "PhoneCaptureService.h"
 
 // =====================================================
 // 상수
 // =====================================================
 constexpr quint16 PHONE_ADAPTER_PORT = 8000;
-const QString DEFAULT_MAIN_SERVER_URL = QStringLiteral("http://localhost:8001");
+const QString DEFAULT_MAIN_SERVER_URL = QStringLiteral("http://10.10.10.97:8001/");
 constexpr int RESOURCE_MONITOR_INTERVAL_MS = 10000;
 constexpr int HEALTH_CHECK_INTERVAL_MS = 30000;
 constexpr int ADB_DEVICE_POLL_INTERVAL_MS = 5000;
@@ -94,6 +95,7 @@ int main(int argc, char *argv[])
     medibridge::controllers::HistoryController    history_controller(&api_client);
     medibridge::controllers::ReportController     report_controller(&api_client);
     medibridge::controllers::PhoneLinkController  phone_link_controller(&adb_monitor, &adb_reverse);
+    medibridge::controllers::VoiceController voice_controller(&utterance_forwarder);
 
     // 9. QML 엔진 + Controller 컨텍스트 등록
     QQmlApplicationEngine engine;
@@ -104,6 +106,7 @@ int main(int argc, char *argv[])
     root_context->setContextProperty("history_controller",    &history_controller);
     root_context->setContextProperty("report_controller",     &report_controller);
     root_context->setContextProperty("phone_link_controller", &phone_link_controller);
+    root_context->setContextProperty("voice_controller",      &voice_controller);
 
     // 10. QML 엔진 종료 시 앱 종료
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,

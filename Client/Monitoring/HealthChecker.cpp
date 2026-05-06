@@ -2,7 +2,7 @@
 // HealthChecker 구현 — 골격
 // =====================================================
 #include "HealthChecker.h"
-#include "../MainServerClient/ApiClient.h"
+#include "ApiClient.h"
 
 #include <QLoggingCategory>
 #include <QElapsedTimer>

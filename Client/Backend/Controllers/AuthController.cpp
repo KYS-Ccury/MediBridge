@@ -1,5 +1,5 @@
 #include "AuthController.h"
-#include "../../MainServerClient/ApiClient.h"
+#include "ApiClient.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>

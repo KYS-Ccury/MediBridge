@@ -1,6 +1,6 @@
 #include "ImageForwarder.h"
-#include "../MainServerClient/ApiClient.h"
-#include "../Threading/WorkerPool.h"
+#include "ApiClient.h"
+#include "WorkerPool.h"
 
 #include <QLoggingCategory>
 
