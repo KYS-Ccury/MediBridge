@@ -7,15 +7,21 @@ class Pill : public drogon::HttpController<Pill>
 {
 public:
     METHOD_LIST_BEGIN
-    ADD_METHOD_TO(Pill::handle_identify,    "/v1/pill/identify",     drogon::Post);
-    ADD_METHOD_TO(Pill::handle_pool_list,   "/v1/pill/pool",         drogon::Get);
-    ADD_METHOD_TO(Pill::handle_pool_add,    "/v1/pill/pool",         drogon::Post);
-    ADD_METHOD_TO(Pill::handle_pool_remove, "/v1/pill/pool/{1}",     drogon::Delete);
-    ADD_METHOD_TO(Pill::handle_pool_reset,  "/v1/pill/pool/all",     drogon::Delete);
+    ADD_METHOD_TO(Pill::handle_identify,             "/v1/pill/identify",              drogon::Post);
+    ADD_METHOD_TO(Pill::handle_identify_narrow,      "/v1/pill/identify/narrow",       drogon::Post);
+    ADD_METHOD_TO(Pill::handle_onboarding_normalize, "/v1/pill/onboarding/normalize",  drogon::Post);
+    ADD_METHOD_TO(Pill::handle_pool_list,            "/v1/pill/pool",                  drogon::Get);
+    ADD_METHOD_TO(Pill::handle_pool_add,             "/v1/pill/pool",                  drogon::Post);
+    ADD_METHOD_TO(Pill::handle_pool_reset,           "/v1/pill/pool/all",              drogon::Delete);
+    ADD_METHOD_TO(Pill::handle_pool_remove,          "/v1/pill/pool/{1}",              drogon::Delete);
     METHOD_LIST_END
 
     void handle_identify(const drogon::HttpRequestPtr& req,
                          std::function<void(const drogon::HttpResponsePtr&)>&& callback);
+    void handle_identify_narrow(const drogon::HttpRequestPtr& req,
+                                std::function<void(const drogon::HttpResponsePtr&)>&& callback);
+    void handle_onboarding_normalize(const drogon::HttpRequestPtr& req,
+                                     std::function<void(const drogon::HttpResponsePtr&)>&& callback);
     void handle_pool_list(const drogon::HttpRequestPtr& req,
                           std::function<void(const drogon::HttpResponsePtr&)>&& callback);
     void handle_pool_add(const drogon::HttpRequestPtr& req,

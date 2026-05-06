@@ -48,7 +48,9 @@ struct FollowUpAction {
     Json::Value to_json() const;
 };
 
-struct GuidanceMessage {
+// 주의: PillSchema 의 GuidanceMessage 와 동일 namespace 의 동일 심볼이 되지 않도록
+// SpeechGuidance 로 분리. (PillSchema 의 GuidanceMessage 는 fallback_action 포함, 의미가 다름)
+struct SpeechGuidance {
     std::string tts_text;
     std::optional<std::string> active_guide;
     std::optional<std::string> interactive_guide;
@@ -58,7 +60,7 @@ struct GuidanceMessage {
 struct UtteranceResponse {
     IntentResult intent;
     FollowUpAction follow_up_action;
-    GuidanceMessage guidance;
+    SpeechGuidance guidance;
     bool injection_flag;               // 인젝션 시도 감지 시 true → "OTHER"로 강제
 
     Json::Value to_json() const;

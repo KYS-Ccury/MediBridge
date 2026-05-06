@@ -4,20 +4,97 @@
 
 ---
 
-## 빠른 시작
+## 빠른 시작 (TestMode)
 
-1. [Docs/Install/MainServerInstall.md](../Docs/Install/MainServerInstall.md) 의 절차 (현재 스켈레톤 — 셋업 진입 시 채움)
-2. Drogon 설치 후 본 폴더에서:
-   ```bash
-   mkdir build && cd build
-   cmake ..
-   make -j$(nproc)
-   ./MediBridgeMainServer
-   ```
-3. config.json 또는 환경변수:
-   - `MEDIBRIDGE_DB_PASSWORD`
-   - `MEDIBRIDGE_JWT_SECRET`
-4. 기본 포트: **8001**, 베이스 URL: `http://<host>:8001/v1`
+### 최초 1회만 — 셋업
+
+상세 절차는 [Docs/Install/MainServerInstall.md](../Docs/Install/MainServerInstall.md). 요약:
+
+```bash
+# 1) 의존성 (Ubuntu 24.04)
+sudo apt install -y \
+    build-essential cmake git pkg-config libssl-dev libmariadb-dev \
+    libjsoncpp-dev libpq-dev libsqlite3-dev libhiredis-dev \
+    libc-ares-dev libyaml-cpp-dev uuid-dev zlib1g-dev libbrotli-dev \
+    libdrogon-dev mariadb-server
+
+# 2) 빌드
+cd MainServer && mkdir -p build-wsl && cd build-wsl
+cmake .. && make -j$(nproc) && cd ..
+
+# 3) DB·시드 (root 권한)
+sudo bash Scripts/smoke_setup.sh
+```
+
+### 매번 PC 부팅 후 — 두 명령으로 시연 환경 띄우기
+
+**(1) WSL 또는 Ubuntu 터미널**:
+
+```bash
+bash MainServer/Scripts/medibridge-up.sh
+```
+
+→ MariaDB 시작 + 환경변수 + 백그라운드 실행 + `/health` 부팅 확인까지 자동.
+
+**(2) Windows 관리자 PowerShell** *(WSL 환경에서만 — LAN 노출용. 실 Ubuntu PC 면 생략)*:
+
+```powershell
+cd C:\Users\LMS\Desktop\Project\MediBridge\MainServer\Scripts
+.\medibridge-portproxy.ps1
+```
+
+→ WSL 의 8001 포트를 Windows LAN 으로 노출 + 방화벽 허용.
+
+> 처음 한 번만 실행 정책 풀기:
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+> ```
+
+### 동작 확인
+
+| 위치 | URL | 기대 |
+| --- | --- | --- |
+| 같은 PC 브라우저 | `http://127.0.0.1:8001/health` | `{"status":"ok",...}` JSON |
+| LAN 다른 PC 브라우저 | `http://10.10.10.97:8001/health` | 같은 JSON (portproxy 등록 후) |
+
+### 자주 쓰는 보조 명령
+
+| 상황 | 명령 |
+| --- | --- |
+| 서버 로그 실시간 보기 | `tail -f /tmp/medibridge.log` |
+| 서버 종료 | `pkill -f MediBridgeMainServer` |
+| 재시작 | `bash MainServer/Scripts/medibridge-up.sh` (이전 인스턴스 자동 종료 후 재실행) |
+| 코드 수정 후 재빌드+재실행 | `cd build-wsl && make -j4 && cd .. && bash Scripts/medibridge-up.sh` |
+| portproxy 등록 확인 | (관리자 PS) `netsh interface portproxy show v4tov4` |
+
+### 시드 사용자 (TestMode)
+
+| email | password | user_id |
+| --- | --- | --- |
+| `test@medibridge.local` | `test1234` | `test_user_001` |
+| `demo@medibridge.local` | `demo1234` | `test_user_002` |
+
+→ 시드 약 풀 4건이 `test_user_001` 에 이미 등록되어 있음 (타이레놀500, 이부프로펜200, 베아제, 아스피린).
+
+### 환경변수
+
+| 이름 | 기본값 | 비고 |
+| --- | --- | --- |
+| `MEDIBRIDGE_TEST_MODE` | `false` | `true` 시 추론·파일저장 우회, DB seed 응답. production 환경에서는 강제 OFF |
+| `MEDIBRIDGE_DB_PASSWORD` | (없음) | medibridge_app 계정 비밀번호 |
+| `MEDIBRIDGE_JWT_SECRET` | (없음) | 32 바이트 이상 권장 |
+| `MEDIBRIDGE_PDMA_KEY` | (없음) | 식약처 OpenAPI 키 (운영 모드) |
+| `MEDIBRIDGE_ENV` | `development` | `production` 시 보안 검증 강화 |
+
+### 포트·베이스 URL
+
+기본 포트 **8001**, 베이스 URL `http://<host>:8001/v1`. 자세한 IP·포트 매트릭스는 [시스템_연결구조 v2.2 §1.2](../Docs/시스템_연결구조_ver2.md).
+
+---
+
+## TestMode 전체 설계
+
+[Docs/TestMode.md](../Docs/TestMode.md) — DB-backed 더미 응답 정책, seed prefix(`999800xxx`/`test_user_*`/`anon_test_*`), 어떤 엔드포인트가 우회되는지 등.
 
 ---
 

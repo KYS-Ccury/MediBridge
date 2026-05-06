@@ -3,9 +3,11 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | 통신 프로토콜 정의서 |
-| **버전** | v2.0 |
-| **개정일** | 2026-05-06 |
-| **이전 버전** | v1.0 (2026-04-30) → `Docs/Old/프로토콜_ver1_2026-05-06.md` |
+| **버전** | v2.1 |
+| **개정일** | 2026-05-07 |
+| **이전 버전** | v2.0 (in-place 갱신) / v1.0 (2026-04-30) → `Docs/Old/프로토콜_ver1_2026-05-06.md` |
+
+> v2.1 추가: §3.3 TTS 정책 (클라 우선 + 메인 서버 fallback 어댑터). PillApi v0.3 `/v1/pill/onboarding/normalize` 신규와 동기. 다른 절은 변경 없음 (호환 변경).
 
 ## 1. 시스템 통신 아키텍처 개요
 
@@ -117,6 +119,22 @@
     - 요청: 효능, 복용법 등 식약처 비위험 정보 원문
     - 응답: 자연어로 요약된 TTS 출력용 텍스트
 
+> 📌 **본 절의 `/onboarding/normalize` / `/onboarding/disambiguate` 흐름은 v0.3 부터 단일 `POST /v1/pill/onboarding/normalize` 엔드포인트로 통합** (PillApi v0.3 §3, 시스템_연결구조 v2.2 §2.8). 다회 round-trip 으로 정규화·분기 질문을 한 번에 처리.
+
+---
+
+## 3.3 음성 합성(TTS) 정책 — 클라 자체 TTS 우선 + 메인 서버 fallback (v2.1 신설)
+
+본 시스템의 TTS 안내는 **클라 PC 자체 TTS 가 우선**, 환경 미지원·품질 부족 시 **메인 서버 TTS fallback** 하는 어댑터 구조를 따른다 (시스템_연결구조 v2.2 §2.9 와 1:1 매핑).
+
+| 방식 | 위치 | 데이터량 (안내 1회) | 비고 |
+| --- | --- | --- | --- |
+| **클라 TTS (MVP 기본)** | 클라 PC | 텍스트만 (수백 바이트) | Qt6 `QTextToSpeech` + Windows SAPI 한국어 (Microsoft Heami / Sun-Hi) |
+| 메인 서버 TTS (fallback) | 메인 서버 → Google TTS / Naver Clova | 60~180KB (MP3) | 클라 TTS 대비 100~300배. 사진 1장(1~3MB) 대비는 작음. 클라우드 비용·지연 발생 |
+
+- 모든 API 응답의 안내 텍스트는 **`text` (화면용)** 와 **`tts_text` (TTS 합성용, 숫자·약어 한글 풀어쓰기)** 두 필드로 분리.
+- 클라는 어댑터 인터페이스 `ITtsProvider` 로 `QtSpeechProvider` (기본) / `PhoneTtsProvider` (옵션) / `ServerTtsProvider` (fallback) 중 선택.
+
 ---
 
 ## 4. [운용 서버 PC ↔ 외부 / DB] 통신 규약
@@ -132,3 +150,4 @@
 | --- | --- | --- | --- |
 | v1.0 | 2026-04-30 | 팀 (3인) | 초안 작성 |
 | v2.0 | 2026-05-06 | 팀 (3인) | ① **음성 바이너리 송수신 제거** — 폰(S24) 온디바이스 STT 채택, 텍스트만 송신. ② 추론 PC `/speech/stt`를 확장 fallback으로 분리. ③ 식약처 OpenAPI 캐시 정책 단순화 — TTL 30일 정책 폐기, e약은요는 lazy 캐싱·낱알식별/DUR은 일괄 적재 + 주기 갱신. ④ GUI ↔ 운용 서버 통신을 "TCP/IP (REST API on HTTP) + 미디어 별도 엔드포인트"로 표기 통일. ⑤ 미디어 송수신 절을 `/media/image` + `/speech/utterance` + (확장)`/speech/audio`로 세분화. ⑥ 안드로이드 S24 입력 디바이스 동작 정의 절(2.4) 신설. ⑦ 복약 이력 기록 요청에 식별 신뢰도·DUR 스냅샷 (선택) 추가. ⑧ 의도 분류 카테고리에 복약 이력 조회·보고서 출력 추가. |
+| v2.1 | 2026-05-07 | 팀 (3인) | ① **§3.3 TTS 정책 신설** — 클라 자체 TTS 우선(Qt6 QTextToSpeech + Windows SAPI), 메인 서버 TTS fallback 어댑터 (`ITtsProvider`). 데이터량 비교 표·어댑터 구조 명시. ② Onboarding 정규화·분기 질문 두 엔드포인트 통합 안내(PillApi v0.3 `POST /v1/pill/onboarding/normalize` 단일화) 표기. |
