@@ -1,0 +1,118 @@
+# =============================================================
+# MediBridge 프로젝트 .gitignore
+# =============================================================
+# 본 파일은 Git이 추적하지 않을 파일·폴더 목록을 정의한다.
+# 각 줄이 무엇을 제외하는지 한국어 주석으로 설명.
+# =============================================================
+
+# ─────────────────────────────────────────────
+# Qt / C++ 빌드 산출물 (Client, MainServer 공통)
+# ─────────────────────────────────────────────
+build/                       # CMake 빌드 디렉토리 (관례)
+build-*/                     # Qt Creator가 만드는 빌드 디렉토리 (예: build-Poc-Desktop_Qt_6_11_0_MinGW_64_bit-Debug)
+cmake-build-*/               # CLion 빌드 디렉토리
+out/                         # Visual Studio 빌드 디렉토리
+
+# CMake 산출물
+CMakeCache.txt               # CMake 캐시 (빌드마다 재생성)
+CMakeFiles/                  # CMake 내부 산출물
+cmake_install.cmake          # 설치 스크립트 (자동 생성)
+CTestTestfile.cmake          # 테스트 설정 (자동 생성)
+Makefile                     # 자동 생성 Makefile (CMake가 만듦)
+*.cmake                      # 자동 생성 cmake 파일
+
+# 컴파일 산출물
+*.o                          # 오브젝트 파일
+*.obj                        # Windows 오브젝트 파일
+*.exe                        # 실행 파일 (빌드 시 생성)
+*.dll                        # 동적 라이브러리
+*.so                         # Linux 공유 라이브러리
+*.dylib                      # macOS 동적 라이브러리
+*.a                          # 정적 라이브러리
+*.lib                        # Windows 정적 라이브러리
+
+# Qt 자동 생성 파일
+*.user                       # Qt Creator 사용자별 설정 (개인용)
+*.user.*                     # Qt Creator 백업
+moc_*.cpp                    # Meta Object Compiler 산출물
+moc_*.h
+qrc_*.cpp                    # Resource Compiler 산출물
+ui_*.h                       # UI 컴파일러 산출물
+
+# ─────────────────────────────────────────────
+# Python (InferenceServer, TrainingServer)
+# ─────────────────────────────────────────────
+__pycache__/                 # Python 바이트코드 캐시
+*.pyc                        # 컴파일된 Python 파일
+*.pyo                        # 최적화된 Python 파일
+*.pyd                        # Python 확장 모듈
+.pytest_cache/               # pytest 캐시
+.mypy_cache/                 # mypy 타입 체크 캐시
+.tox/                        # tox 테스트 환경
+*.egg-info/                  # 패키지 메타데이터
+dist/                        # 배포 패키지
+.coverage                    # 커버리지 리포트
+
+# Python 가상환경 (각 서버별)
+venv/
+.venv/
+env/
+
+# ─────────────────────────────────────────────
+# IDE / 에디터
+# ─────────────────────────────────────────────
+.vscode/                     # Visual Studio Code 워크스페이스 설정
+.idea/                       # JetBrains (CLion, PyCharm 등) 설정
+*.swp                        # Vim 임시 파일
+*.swo
+*~                           # 백업 파일
+
+# ─────────────────────────────────────────────
+# AI 모델 가중치 / 데이터셋 (용량 큰 파일은 Git LFS 권장)
+# ─────────────────────────────────────────────
+*.pt                         # PyTorch 가중치
+*.pth                        # PyTorch 가중치
+*.onnx                       # ONNX 모델
+*.weights                    # 일반 가중치
+*.h5                         # Keras/TensorFlow 가중치
+*.ckpt                       # 체크포인트
+*.tflite                     # TensorFlow Lite
+
+# 데이터셋 (학습 서버 전용, 수십 GB 가능)
+TrainingServer/Datasets/*    # 데이터셋 본체는 추적 X
+!TrainingServer/Datasets/.gitkeep   # 폴더 자체는 보존
+
+# ─────────────────────────────────────────────
+# 환경 변수 / 시크릿
+# ─────────────────────────────────────────────
+.env                         # 환경 변수 파일 (DB 비밀번호 등)
+.env.local
+*.secret
+secrets/
+
+# ─────────────────────────────────────────────
+# 로그 / 임시 파일 / 받은 파일
+# ─────────────────────────────────────────────
+*.log                        # 로그 파일
+logs/                        # 로그 디렉토리
+*.tmp                        # 임시 파일
+*.temp
+received_data/               # PoC에서 폰이 보낸 사진 임시 저장
+uploaded/                    # 업로드 임시 폴더
+
+# ─────────────────────────────────────────────
+# OS 자동 생성 파일
+# ─────────────────────────────────────────────
+Thumbs.db                    # Windows 썸네일 캐시
+ehthumbs.db
+Desktop.ini                  # Windows 폴더 설정
+.DS_Store                    # macOS 폴더 메타데이터
+.AppleDouble
+.LSOverride
+
+# ─────────────────────────────────────────────
+# 보고서 PDF / 실행 결과 (재생성 가능)
+# ─────────────────────────────────────────────
+output/
+reports/*.pdf
+!reports/SAMPLE.pdf          # 예시 PDF는 추적 (필요 시)
