@@ -35,11 +35,25 @@ set(SOURCES
     Routers/Speech.cpp
     Routers/Pill.cpp
     Routers/Monitoring.cpp
-    Services/AuthService.cpp
-    Services/DurChecker.cpp
-    Services/InferenceClient.cpp
-    Services/PdmaCacheManager.cpp
-    Services/ReportGenerator.cpp
+    # Services — 패턴 B (카테고리별 클래스 분리, 하위 폴더로 그룹)
+    Services/Auth/PasswordHasher.cpp
+    Services/Auth/JwtIssuer.cpp
+    Services/Auth/UserManager.cpp
+    Services/Auth/Authenticator.cpp
+    Services/Dur/DurQueryEngine.cpp
+    Services/Dur/DurMessageFormatter.cpp
+    Services/Inference/InferenceClientCommon.cpp
+    Services/Inference/VisionInferenceClient.cpp
+    Services/Inference/IntentInferenceClient.cpp
+    Services/Inference/OnboardingInferenceClient.cpp
+    Services/Inference/SummaryInferenceClient.cpp
+    Services/Inference/InferenceClient.cpp
+    Services/Pdma/PillIdentificationCache.cpp
+    Services/Pdma/DrugOverviewCache.cpp
+    Services/Pdma/PdmaApiClient.cpp
+    Services/Report/ReportBuilder.cpp
+    Services/Report/ReportHtmlRenderer.cpp
+    Services/Report/ReportPdfRenderer.cpp
     Database/Connection.cpp
     Threading/WorkerPool.cpp
     Monitoring/ResourceMonitor.cpp
@@ -63,11 +77,24 @@ set(HEADERS
     Schemas/SpeechSchema.h
     Schemas/PillSchema.h
     Schemas/HealthSchema.h
-    Services/AuthService.h
-    Services/DurChecker.h
-    Services/InferenceClient.h
-    Services/PdmaCacheManager.h
-    Services/ReportGenerator.h
+    Services/Auth/PasswordHasher.h
+    Services/Auth/JwtIssuer.h
+    Services/Auth/UserManager.h
+    Services/Auth/Authenticator.h
+    Services/Dur/DurQueryEngine.h
+    Services/Dur/DurMessageFormatter.h
+    Services/Inference/InferenceClientCommon.h
+    Services/Inference/VisionInferenceClient.h
+    Services/Inference/IntentInferenceClient.h
+    Services/Inference/OnboardingInferenceClient.h
+    Services/Inference/SummaryInferenceClient.h
+    Services/Inference/InferenceClient.h
+    Services/Pdma/PillIdentificationCache.h
+    Services/Pdma/DrugOverviewCache.h
+    Services/Pdma/PdmaApiClient.h
+    Services/Report/ReportBuilder.h
+    Services/Report/ReportHtmlRenderer.h
+    Services/Report/ReportPdfRenderer.h
     Database/Models.h
     Database/Connection.h
     Threading/WorkerPool.h

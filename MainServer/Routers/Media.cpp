@@ -1,5 +1,5 @@
 #include "Media.h"
-#include "../Services/InferenceClient.h"
+#include "../Services/Inference/InferenceClient.h"
 
 #include <drogon/HttpResponse.h>
 #include <drogon/MultiPart.h>

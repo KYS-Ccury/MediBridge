@@ -1,6 +1,8 @@
 #include "Auth.h"
 #include "../Schemas/AuthSchema.h"
-#include "../Services/AuthService.h"
+#include "../Services/Auth/UserManager.h"
+#include "../Services/Auth/Authenticator.h"
+#include "../Services/Auth/JwtIssuer.h"
 
 #include <drogon/HttpResponse.h>
 

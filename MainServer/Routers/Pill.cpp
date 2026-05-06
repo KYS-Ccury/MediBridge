@@ -1,7 +1,8 @@
 #include "Pill.h"
 #include "../Schemas/PillSchema.h"
-#include "../Services/DurChecker.h"
-#include "../Services/InferenceClient.h"
+#include "../Services/Dur/DurQueryEngine.h"
+#include "../Services/Dur/DurMessageFormatter.h"
+#include "../Services/Inference/InferenceClient.h"
 
 #include <drogon/HttpResponse.h>
 

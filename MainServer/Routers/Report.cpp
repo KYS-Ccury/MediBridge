@@ -1,5 +1,7 @@
 #include "Report.h"
-#include "../Services/ReportGenerator.h"
+#include "../Services/Report/ReportBuilder.h"
+#include "../Services/Report/ReportHtmlRenderer.h"
+#include "../Services/Report/ReportPdfRenderer.h"
 #include "../Threading/WorkerPool.h"
 
 #include <drogon/HttpResponse.h>

@@ -1,6 +1,6 @@
 #include "Speech.h"
 #include "../Schemas/SpeechSchema.h"
-#include "../Services/InferenceClient.h"
+#include "../Services/Inference/InferenceClient.h"
 
 #include <drogon/HttpResponse.h>
 
