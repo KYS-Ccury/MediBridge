@@ -1,0 +1,47 @@
+# =====================================================
+# MediBridge InferenceServer 의존성 (Python 3.12 + Ubuntu 24.04 + GPU)
+# =====================================================
+# 가상환경 활성화 후:
+#   pip install -r requirements.txt
+# =====================================================
+
+# ----- HTTP 프레임워크 -----
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.10        # multipart 이미지 업로드
+
+# ----- 검증·직렬화 -----
+pydantic==2.9.2
+
+# ----- HTTP 클라이언트 (외부 호출용) -----
+httpx==0.27.2
+
+# ----- AI / Vision (PyTorch + CUDA) -----
+# torch는 CUDA 버전에 맞춰 별도 설치 권장:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+torch>=2.4.0
+torchvision>=0.19.0
+
+# YOLO26 (Ultralytics 사용 — 실제 모델은 학습 서버에서 학습 후 SCP)
+ultralytics>=8.3.0
+
+# PaddleOCR (각인 인식)
+paddlepaddle-gpu>=2.6.0
+paddleocr>=2.8.0
+
+# OpenCV (색·모양·크기 분석)
+opencv-python>=4.10.0
+
+# ----- LLM (모델은 추후 선정) -----
+# transformers>=4.45.0
+# vllm>=0.6.0   # 또는 ollama 클라이언트
+
+# ----- 음성 인식 (확장 fallback — MVP 미사용) -----
+# faster-whisper>=1.0.0
+
+# ----- 모니터링 -----
+psutil>=6.0.0                    # CPU·메모리·디스크
+pynvml>=11.5.0                   # GPU (NVIDIA Management Library)
+
+# ----- 로깅·도구 -----
+loguru>=0.7.2

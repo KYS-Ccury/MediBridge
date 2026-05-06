@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>메디브릿지 PoC — 폰 입력</title>
+    <style>
+        /* 노인층 친화: 큰 글자, 명확한 버튼, 단순한 레이아웃 */
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            padding: 20px;
+            margin: 0;
+            background: #f7f8fa;
+            color: #222;
+            font-size: 18px;
+        }
+        h1 { font-size: 28px; margin-bottom: 8px; }
+        h2 { font-size: 22px; margin-top: 24px; color: #2c5aa0; }
+        p { line-height: 1.5; }
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            font-size: 20px;
+            padding: 12px;
+            border: 2px solid #ccd;
+            border-radius: 8px;
+        }
+        button {
+            width: 100%;
+            padding: 16px;
+            margin: 10px 0;
+            font-size: 20px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            background: #2c5aa0;
+            color: white;
+            cursor: pointer;
+        }
+        button:active { background: #1e4480; }
+        button.secondary { background: #6c757d; }
+        .preview {
+            max-width: 100%;
+            max-height: 300px;
+            display: block;
+            margin: 10px auto;
+            border: 2px solid #ccd;
+            border-radius: 8px;
+        }
+        .log {
+            background: #fff;
+            border: 1px solid #ccd;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 20px;
+            font-size: 14px;
+            white-space: pre-wrap;
+            min-height: 60px;
+            color: #555;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>메디브릿지 PoC</h1>
+    <p>안드로이드 S24의 음성·카메라 입력을 받아 PC에 전달합니다.</p>
+
+    <!-- 1. 음성 → 텍스트 (폰 온디바이스 STT 활용) -->
+    <h2>1. 음성 입력</h2>
+    <p>아래 입력칸을 탭하고 <b>삼성 키보드의 마이크 버튼</b>을 눌러 음성을 텍스트로 입력하세요.</p>
+    <textarea id="text_input" placeholder="여기에 음성 입력 결과가 표시됩니다..."></textarea>
+    <button id="send_text_btn">텍스트 전송</button>
+
+    <!-- 2. 사진 촬영 (HTML5 input capture — 시스템 카메라 호출) -->
+    <h2>2. 사진 촬영</h2>
+    <p>아래 버튼을 누르면 시스템 카메라가 열립니다.</p>
+    <input type="file" id="image_input" accept="image/*" capture="environment" class="hidden">
+    <button id="capture_btn">사진 촬영</button>
+    <img id="preview_img" class="preview hidden" alt="미리보기">
+    <button id="send_image_btn" class="hidden">사진 전송</button>
+
+    <!-- 로그 출력 -->
+    <h2>로그</h2>
+    <div id="log" class="log">준비 완료 — 음성 또는 사진을 입력하세요.</div>
+
+    <script>
+        // =====================================================
+        // PoC 클라이언트 측 스크립트
+        // =====================================================
+        // 본 페이지는 PhoneAdapter (PC localhost:8000) 가 서빙.
+        // 폰의 STT 결과(텍스트) + 카메라 사진(파일) 을 같은 호스트로 POST.
+        // =====================================================
+
+        const text_input    = document.getElementById('text_input');
+        const send_text_btn = document.getElementById('send_text_btn');
+        const image_input   = document.getElementById('image_input');
+        const capture_btn   = document.getElementById('capture_btn');
+        const preview_img   = document.getElementById('preview_img');
+        const send_image_btn = document.getElementById('send_image_btn');
+        const log_div       = document.getElementById('log');
+
+        // 현재 페이지가 서빙되는 origin 사용 (예: http://localhost:8000)
+        const BASE_URL = window.location.origin;
+
+        function log(message) {
+            const ts = new Date().toLocaleTimeString('ko-KR');
+            log_div.textContent = `[${ts}] ${message}\n` + log_div.textContent;
+        }
+
+        // ---------- 텍스트 전송 ----------
+        send_text_btn.addEventListener('click', async () => {
+            const text = text_input.value.trim();
+            if (!text) {
+                log('⚠️ 텍스트가 비어있습니다.');
+                return;
+            }
+            try {
+                const res = await fetch(`${BASE_URL}/v1/speech/utterance`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        text: text,
+                        stt_engine: 'galaxy_ai',
+                        context: 'daily_use',
+                        language: 'ko-KR'
+                    })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    log(`✓ 텍스트 전송 완료 (${text.length}자) — 응답: ${JSON.stringify(data)}`);
+                    text_input.value = '';
+                } else {
+                    log(`✗ 텍스트 전송 실패 — HTTP ${res.status}`);
+                }
+            } catch (e) {
+                log(`✗ 텍스트 전송 에러: ${e.message}`);
+            }
+        });
+
+        // ---------- 사진 촬영 ----------
+        capture_btn.addEventListener('click', () => {
+            // <input type="file" capture> 트리거 → 시스템 카메라 자동 실행
+            image_input.click();
+        });
+
+        image_input.addEventListener('change', () => {
+            const file = image_input.files[0];
+            if (!file) return;
+
+            // 미리보기 표시
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview_img.src = e.target.result;
+                preview_img.classList.remove('hidden');
+                send_image_btn.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+
+            log(`✓ 사진 선택됨: ${file.name} (${Math.round(file.size / 1024)} KB)`);
+        });
+
+        // ---------- 사진 전송 ----------
+        send_image_btn.addEventListener('click', async () => {
+            const file = image_input.files[0];
+            if (!file) return;
+
+            // multipart/form-data 구성
+            const form = new FormData();
+            form.append('image', file);
+            form.append('intent_hint', 'identify');
+
+            try {
+                const res = await fetch(`${BASE_URL}/v1/media/image`, {
+                    method: 'POST',
+                    body: form
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    log(`✓ 사진 전송 완료 (${Math.round(file.size / 1024)} KB) — 응답: ${JSON.stringify(data)}`);
+                    // 전송 후 미리보기 정리
+                    preview_img.classList.add('hidden');
+                    send_image_btn.classList.add('hidden');
+                    image_input.value = '';
+                } else {
+                    log(`✗ 사진 전송 실패 — HTTP ${res.status}`);
+                }
+            } catch (e) {
+                log(`✗ 사진 전송 에러: ${e.message}`);
+            }
+        });
+    </script>
+</body>
+</html>
