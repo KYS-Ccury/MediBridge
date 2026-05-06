@@ -38,9 +38,24 @@ find_package(Qt6 REQUIRED COMPONENTS
 set(SOURCES
     Main.cpp
     PhoneAdapter/PhoneServer.cpp
+
+    # MainServerClient — 패턴 B (조립자 + 카테고리별 클라이언트)
     MainServerClient/ApiClient.cpp
+    MainServerClient/ApiClientCommon.cpp
+    MainServerClient/AuthApiClient.cpp
+    MainServerClient/PillApiClient.cpp
+    MainServerClient/HistoryApiClient.cpp
+    MainServerClient/ReportApiClient.cpp
+    MainServerClient/MediaApiClient.cpp
+    MainServerClient/SpeechApiClient.cpp
+    MainServerClient/MonitoringApiClient.cpp
+
     Threading/WorkerPool.cpp
-    Services/MediaForwarder.cpp
+
+    # Services — 기능별 분리
+    Services/ImageForwarder.cpp
+    Services/UtteranceForwarder.cpp
+
     Monitoring/ResourceMonitor.cpp
     Monitoring/HealthChecker.cpp
 )
@@ -48,9 +63,22 @@ set(SOURCES
 # 헤더 파일 목록 (AUTOMOC 처리 위해 명시적 등록)
 set(HEADERS
     PhoneAdapter/PhoneServer.h
+
     MainServerClient/ApiClient.h
+    MainServerClient/ApiClientCommon.h
+    MainServerClient/AuthApiClient.h
+    MainServerClient/PillApiClient.h
+    MainServerClient/HistoryApiClient.h
+    MainServerClient/ReportApiClient.h
+    MainServerClient/MediaApiClient.h
+    MainServerClient/SpeechApiClient.h
+    MainServerClient/MonitoringApiClient.h
+
     Threading/WorkerPool.h
-    Services/MediaForwarder.h
+
+    Services/ImageForwarder.h
+    Services/UtteranceForwarder.h
+
     Monitoring/ResourceMonitor.h
     Monitoring/HealthChecker.h
 )
