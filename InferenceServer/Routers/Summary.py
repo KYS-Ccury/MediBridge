@@ -6,7 +6,7 @@ Summary Router — POST /summary/non-medical
 from fastapi import APIRouter, HTTPException
 
 from Schemas.SummarySchema import NonMedicalSummaryRequest, NonMedicalSummaryResponse
-from Llm.OnboardingHelper import OnboardingHelper
+from Llm.NonMedicalSummarizer import NonMedicalSummarizer
 
 router = APIRouter(prefix="/summary", tags=["Summary"])
 

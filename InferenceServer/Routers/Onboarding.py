@@ -9,7 +9,8 @@ from Schemas.OnboardingSchema import (
     NormalizeRequest, NormalizeResponse,
     DisambiguateRequest, DisambiguateResponse,
 )
-from Llm.OnboardingHelper import OnboardingHelper
+from Llm.OnboardingNormalizer import OnboardingNormalizer
+from Llm.OnboardingDisambiguator import OnboardingDisambiguator
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
@@ -20,7 +21,7 @@ async def normalize(request: NormalizeRequest) -> NormalizeResponse:
     폰 STT 결과 약명을 정규화 + 식약처 캐시 검색 후보 반환.
     """
     # TODO (영역 A 분담):
-    #   1. OnboardingHelper.instance().normalize_drug_name(request.raw_text)
+    #   1. OnboardingNormalizer.instance().normalize(request.raw_text)
     #   2. 식약처 낱알식별 캐시(메인서버 경유) 검색
     #   3. NormalizeResponse 반환
     raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
@@ -33,6 +34,6 @@ async def disambiguate(request: DisambiguateRequest) -> DisambiguateResponse:
     예: "예전에 드셨던 OO약(혈압약)인가요? 최근 드시는 OO약(진통제)인가요?"
     """
     # TODO (영역 A 분담):
-    #   1. OnboardingHelper.instance().generate_disambiguation_question(...)
+    #   1. OnboardingDisambiguator.instance().generate_question(request.candidates)
     #   2. 한국어 친화적 자연어 질문 + 선택지 리스트
     raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")

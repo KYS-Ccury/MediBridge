@@ -9,7 +9,9 @@ from loguru import logger
 from Schemas.VisionSchema import DetectResponse, AnalyzeResponse
 from Vision.YoloDetector import YoloDetector
 from Vision.OcrEngine import OcrEngine
-from Vision.ColorShape import ColorShape
+from Vision.ColorClassifier import ColorClassifier
+from Vision.ShapeClassifier import ShapeClassifier
+from Vision.SizeMeasurer import SizeMeasurer
 
 router = APIRouter(prefix="/vision", tags=["Vision"])
 
@@ -42,6 +44,6 @@ async def analyze(crop_id: str) -> AnalyzeResponse:
     # TODO (영역 A 분담):
     #   1. crop_id 로 caching된 crop 이미지 조회
     #   2. OcrEngine.instance().recognize(crop) → 각인 텍스트
-    #   3. ColorShape.classify_color(crop) + classify_shape(crop) + measure_size(crop)
+    #   3. ColorClassifier.classify(crop) + ShapeClassifier.classify(crop) + SizeMeasurer.measure_mm(crop, calibration)
     #   4. AnalyzeResponse 반환
     raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")

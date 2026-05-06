@@ -19,6 +19,9 @@ from Routers import Vision, Intent, Onboarding, Summary, Speech, Monitoring
 from Vision.YoloDetector import YoloDetector
 from Vision.OcrEngine import OcrEngine
 from Llm.IntentClassifier import IntentClassifier
+from Llm.OnboardingNormalizer import OnboardingNormalizer
+from Llm.OnboardingDisambiguator import OnboardingDisambiguator
+from Llm.NonMedicalSummarizer import NonMedicalSummarizer
 from Threading.WorkerPool import WorkerPool
 
 
@@ -34,6 +37,9 @@ async def lifespan(app: FastAPI):
     YoloDetector.instance().load_model(config.yolo_weights_path)
     OcrEngine.instance().load_model()
     IntentClassifier.instance().load_model()
+    OnboardingNormalizer.instance().load_model()
+    OnboardingDisambiguator.instance().load_model()
+    NonMedicalSummarizer.instance().load_model()
     logger.info("[Main] 모델 로딩 완료")
 
     # 2. WorkerPool 초기화
