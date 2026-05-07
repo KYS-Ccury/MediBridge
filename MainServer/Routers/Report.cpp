@@ -180,17 +180,21 @@ void Report::handle_generate(const drogon::HttpRequestPtr& req,
         }
 
         // INSERT 보고서 행 (이력 추적용)
+        // Drogon 1.8.7 SqlBinder 는 const-rvalue std::string 을 인식 못해
+        // 미리 lvalue 변수로 풀어서 바인딩.
         try {
+            const std::string period_start = from_date.empty() ? std::string("1970-01-01") : from_date;
+            const std::string period_end   = to_date.empty()   ? std::string("9999-12-31") : to_date;
+            const std::string consumed_str = resp.consumed_summary.to_json().toStyledString();
+            const std::string side_str     = Json::Value(Json::arrayValue).toStyledString();
             db->execSqlSync(
                 "INSERT INTO user_reports "
                 "(report_id, anonymous_id, period_start, period_end, "
                 " consumed_summary, side_effect_quotes) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 resp.report_id, anon_id,
-                from_date.empty() ? std::string("1970-01-01") : from_date,
-                to_date.empty()   ? std::string("9999-12-31") : to_date,
-                resp.consumed_summary.to_json().toStyledString(),
-                Json::Value(Json::arrayValue).toStyledString());
+                period_start, period_end,
+                consumed_str, side_str);
         } catch (const orm::DrogonDbException&) {
             // 보고서 행 INSERT 실패는 응답 자체엔 영향 없음 (감사 로그 차원)
         }
