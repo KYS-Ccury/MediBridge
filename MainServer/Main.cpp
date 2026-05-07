@@ -60,6 +60,21 @@ int main(int argc, char *argv[])
         .setIdleConnectionTimeout(60)                         // 유휴 연결 60초 후 종료
         .setKeepaliveRequestsNumber(0);                       // keep-alive 무제한 (LAN 환경)
 
+    // 4-1. 모든 HTTP 요청 단위 로깅 (개발·시연 단계 가시성용)
+    //   "[REQ] 192.168.x.x  POST /v1/auth/login" 형태로 stdout 에 한 줄.
+    drogon::app().registerPreHandlingAdvice(
+        [](const drogon::HttpRequestPtr& req,
+           drogon::AdviceCallback&&,
+           drogon::AdviceChainCallback&& next)
+        {
+            std::cout << "[REQ] " << req->getPeerAddr().toIpPort()
+                      << "  " << req->getMethodString()
+                      << " "  << req->getPath()
+                      << std::endl;
+            std::cout.flush();
+            next();
+        });
+
     // 5. 이벤트 루프 진입 (블록)
     drogon::app().run();
 
