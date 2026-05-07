@@ -101,6 +101,9 @@ set(HEADERS
     Monitoring/ResourceMonitor.h
     Monitoring/HealthChecker.h
     Monitoring/MetricsExporter.h
+
+    # Utils — thread-safe 헬퍼 (std::gmtime 대체 등)
+    Utils/TimeUtil.h
 )
 
 add_executable(MediBridgeMainServer

@@ -3,6 +3,7 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QUrlQuery>
 
 namespace medibridge::network {
 
@@ -35,10 +36,19 @@ void HistoryApiClient::list(const QString& from_date,
                             int page_size,
                             JsonCallback callback)
 {
-    QString path = QString("/v1/history/list?page=%1&page_size=%2")
-                       .arg(page).arg(page_size);
-    if (!from_date.isEmpty()) path += "&from_date=" + from_date;
-    if (!to_date.isEmpty())   path += "&to_date=" + to_date;
+    // ⚠ 보안: QUrlQuery 로 자동 percent-encoding (수동 문자열 결합 ❌).
+    // 사용자 입력에 '&', '=', 한글, 공백 등 포함 시 안전 처리.
+    QUrlQuery query;
+    query.addQueryItem("page", QString::number(page));
+    query.addQueryItem("page_size", QString::number(page_size));
+    if (!from_date.isEmpty()) {
+        query.addQueryItem("from_date", from_date);
+    }
+    if (!to_date.isEmpty()) {
+        query.addQueryItem("to_date", to_date);
+    }
+    const QString path = QStringLiteral("/v1/history/list?") +
+                         query.toString(QUrl::FullyEncoded);
     common_->send_request("GET", path, {}, "application/json", std::move(callback));
 }
 

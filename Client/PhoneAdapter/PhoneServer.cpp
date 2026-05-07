@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDateTime>
+#include <QUuid>
 
 namespace medibridge::phone {
 
@@ -78,8 +79,11 @@ void PhoneServer::register_routes()
 // =====================================================
 QHttpServerResponse PhoneServer::handle_root() const
 {
-    // 현재 실행 디렉토리 옆 PhoneAdapter/Static/Index.html 을 직접 읽음.
-    // (확장 시 Resources.qrc 로 바이너리 묶음 권장)
+    // ⚠ 보안: 경로는 절대 사용자 입력으로 만들지 않음 (path traversal 방지).
+    // 본 메소드의 html_path 는 컴파일 시점 고정 상수.
+    //
+    // TODO: Resources.qrc 사용 — qrc:/Frontend/Static/Index.html 로 변경 권장
+    //   (CMakeLists.txt 에 Frontend/Resources.qrc 등록되어 있음)
     const QString html_path = QStringLiteral("PhoneAdapter/Static/Index.html");
     QFile html_file(html_path);
     if (!html_file.open(QIODevice::ReadOnly)) {
@@ -110,12 +114,15 @@ QHttpServerResponse PhoneServer::handle_media_image(const QHttpServerRequest& re
     //   - MediaApi.md §1
     //   - QHttpServerRequest::body() 로 raw 바이너리 접근
     //   - multipart 파싱은 QHttpMultiPart 또는 수동 파싱 필요
+    // ⚠ 보안: 이미지 바이너리 본체 로깅 ❌. 크기만.
     qInfo() << "[PhoneServer] POST /v1/media/image — body size:"
             << request.body().size() << "bytes (TODO)";
 
+    // ⚠ 보안: request_id 는 예측 불가능한 UUID 사용 (timestamp 추측 회피).
     QJsonObject response_obj{
         {"status", "accepted"},
-        {"request_id", QString("req_%1").arg(QDateTime::currentMSecsSinceEpoch())},
+        {"request_id", QStringLiteral("req_") +
+                       QUuid::createUuid().toString(QUuid::WithoutBraces)},
         {"todo", true}
     };
     return QHttpServerResponse(
@@ -138,8 +145,10 @@ QHttpServerResponse PhoneServer::handle_speech_utterance(const QHttpServerReques
     // 참고:
     //   - SpeechApi.md §1
     //   - QJsonDocument::fromJson(request.body())
-    qInfo() << "[PhoneServer] POST /v1/speech/utterance — body:"
-            << request.body() << "(TODO)";
+    // ⚠ 보안: 사용자 발화 본문(PII) 로깅 X. 크기·해시 일부만.
+    const auto body_size = request.body().size();
+    qInfo() << "[PhoneServer] POST /v1/speech/utterance — body size:"
+            << body_size << "bytes (본문 마스킹) (TODO)";
 
     QJsonObject response_obj{
         {"status", "ok"},

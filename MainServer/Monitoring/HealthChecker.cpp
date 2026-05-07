@@ -1,10 +1,6 @@
 #include "HealthChecker.h"
 #include "../Database/Connection.h"
-
-#include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
+#include "../Utils/TimeUtil.h"
 
 namespace medibridge::monitoring {
 
@@ -21,12 +17,8 @@ schemas::HealthResponse HealthChecker::check()
     resp.version = "0.1.0";
     resp.uptime_seconds = 0;   // TODO
 
-    // ISO 8601 현재 시각
-    auto now = std::chrono::system_clock::now();
-    auto t = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&t), "%Y-%m-%dT%H:%M:%SZ");
-    resp.checked_at = ss.str();
+    // ISO 8601 현재 시각 — thread-safe 헬퍼 사용 (std::gmtime 미사용)
+    resp.checked_at = utils::current_iso8601_utc();
 
     // TODO (영역 B 분담):
     //   1. check_db() / check_inference_server() / check_disk() 순차 호출

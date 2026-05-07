@@ -44,12 +44,20 @@ int main(int argc, char *argv[])
         config.db_pool_size()
     );
 
-    // 4. Drogon 앱 설정
+    // 4. Drogon 앱 설정 (보안 — DoS 방어 옵션 명시)
     drogon::app()
         .addListener("0.0.0.0", config.server_port())
         .setThreadNum(config.drogon_thread_num())
         .setUploadPath("./uploads")
-        .setMaxConnectionNum(10000);
+        .setMaxConnectionNum(10000)
+
+        // 보안 — 대용량 요청·연결 폭주 차단
+        .setClientMaxBodySize(20 * 1024 * 1024)              // 요청 본문 최대 20MB (이미지 10MB 여유)
+        .setClientMaxMemoryBodySize(1 * 1024 * 1024)         // 메모리 처리 최대 1MB (초과 시 디스크)
+        .setClientMaxWebSocketMessageSize(1 * 1024 * 1024)   // WebSocket 메시지 최대 1MB
+        .setMaxConnectionNumPerIP(50)                         // IP별 동시 연결 50개 제한
+        .setIdleConnectionTimeout(60)                         // 유휴 연결 60초 후 종료
+        .setKeepaliveRequestsNumber(0);                       // keep-alive 무제한 (LAN 환경)
 
     // 5. 이벤트 루프 진입 (블록)
     drogon::app().run();

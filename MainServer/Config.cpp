@@ -3,8 +3,15 @@
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
+#include <stdexcept>
 
 namespace medibridge {
+
+// JWT 시크릿 최소 길이 (HS256 = 256bit = 32바이트)
+constexpr size_t JWT_SECRET_MIN_LENGTH = 32;
+
+// 운영 환경 감지용 환경변수 — "production" 시 시크릿 미설정 거부
+constexpr const char* MEDIBRIDGE_ENV_VAR = "MEDIBRIDGE_ENV";
 
 Config& Config::instance()
 {
@@ -17,16 +24,53 @@ void Config::load_from_file(const std::string& path)
     // TODO (영역 B 분담):
     //   1. path 가 존재하면 nlohmann::json 또는 Drogon Json::Value 로 파싱
     //   2. 각 필드를 멤버 변수에 대입
-    //   3. 환경변수 우선 적용 (예: getenv("MEDIBRIDGE_DB_PASSWORD"))
-    //   4. 시크릿 필드(db_password, jwt_secret)는 반드시 환경변수 강제
+    //   3. 환경변수 우선 적용
     std::cout << "[Config] load_from_file: " << path << " (TODO 구현)" << std::endl;
 
-    // 임시: 환경변수 일부만 처리
+    // 시크릿 환경변수 적용
     if (const char* pw = std::getenv("MEDIBRIDGE_DB_PASSWORD")) {
         db_password_ = pw;
     }
     if (const char* secret = std::getenv("MEDIBRIDGE_JWT_SECRET")) {
         jwt_secret_ = secret;
+    }
+    if (const char* pdma = std::getenv("MEDIBRIDGE_PDMA_KEY")) {
+        pdma_service_key_ = pdma;
+    }
+
+    // ===== 보안 검증 =====
+    const std::string env = std::getenv(MEDIBRIDGE_ENV_VAR)
+        ? std::getenv(MEDIBRIDGE_ENV_VAR) : "development";
+    const bool is_production = (env == "production");
+
+    // 1) JWT 시크릿 검증
+    if (jwt_secret_ == "CHANGE_ME_IN_PRODUCTION" || jwt_secret_.empty()) {
+        if (is_production) {
+            std::cerr << "[Config] FATAL: MEDIBRIDGE_JWT_SECRET 환경변수 미설정 "
+                      << "(production 모드에서 기본값 사용 금지)" << std::endl;
+            std::abort();
+        } else {
+            std::cerr << "[Config] WARN: JWT 시크릿이 기본값입니다. "
+                      << "production 배포 전 MEDIBRIDGE_JWT_SECRET 환경변수 설정 필수." << std::endl;
+        }
+    }
+
+    // 2) JWT 시크릿 길이 (HS256 권장 32바이트 이상)
+    if (jwt_secret_.length() < JWT_SECRET_MIN_LENGTH) {
+        std::cerr << "[Config] WARN: JWT 시크릿 길이 " << jwt_secret_.length()
+                  << " < " << JWT_SECRET_MIN_LENGTH
+                  << "바이트 — brute force 위험. 32자 이상 권장." << std::endl;
+        if (is_production) {
+            std::cerr << "[Config] FATAL: production 모드에서 짧은 JWT 시크릿 사용 금지" << std::endl;
+            std::abort();
+        }
+    }
+
+    // 3) DB 비밀번호 검증 (production에서 빈 값 거부)
+    if (db_password_.empty() && is_production) {
+        std::cerr << "[Config] FATAL: MEDIBRIDGE_DB_PASSWORD 환경변수 미설정 "
+                  << "(production 모드 필수)" << std::endl;
+        std::abort();
     }
 }
 

@@ -1,10 +1,6 @@
 #include "MetricsExporter.h"
 #include "ResourceMonitor.h"
-
-#include <chrono>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
+#include "../Utils/TimeUtil.h"
 
 namespace medibridge::monitoring {
 
@@ -19,11 +15,8 @@ schemas::MetricsResponse MetricsExporter::collect_json()
     schemas::MetricsResponse resp;
     resp.service = "main_server";
 
-    auto now = std::chrono::system_clock::now();
-    auto t = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&t), "%Y-%m-%dT%H:%M:%SZ");
-    resp.collected_at = ss.str();
+    // ISO 8601 현재 시각 — thread-safe 헬퍼 사용
+    resp.collected_at = utils::current_iso8601_utc();
 
     // ResourceMonitor 의 최근 측정값 사용
     ResourceMonitor::instance().measure();
