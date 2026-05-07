@@ -3,6 +3,8 @@
 #include "PhoneCaptureService.h"
 
 #include <QLoggingCategory>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 namespace medibridge::controllers {
 
@@ -68,10 +70,35 @@ void PillController::on_capture_succeeded(const QByteArray& png_data)
 {
     qInfo() << "[PillController] 캡쳐 성공 — 메인서버 업로드 (" << png_data.size() << "bytes)";
 
-    // 메인서버 업로드 (multipart) — image/png MIME
+    // 1) 미디어 업로드 → request_id 받음
     api_client_->media().upload_image(png_data, "image/png", "identify",
         [this](const QByteArray& response, int status_code) {
-            handle_identify_response(response, status_code);
+            if (status_code != 200 && status_code != 201 && status_code != 202) {
+                set_loading(false);
+                set_error(QStringLiteral("UPLOAD_FAILED_") + QString::number(status_code));
+                emit identify_failed(last_error_);
+                return;
+            }
+
+            // 응답에서 request_id 추출 후 식별 단계로 진행
+            const auto doc = QJsonDocument::fromJson(response);
+            const QString req_id = doc.isObject()
+                ? doc.object().value("request_id").toString()
+                : QString();
+            if (req_id.isEmpty()) {
+                set_loading(false);
+                set_error("UPLOAD_NO_REQUEST_ID");
+                emit identify_failed(last_error_);
+                return;
+            }
+
+            qInfo() << "[PillController] 업로드 OK request_id=" << req_id
+                    << "→ /v1/pill/identify 호출";
+            // 2) 식별 호출 (이어달리기)
+            api_client_->pill().identify(req_id, /*utterance_id=*/QString(), true,
+                [this](const QByteArray& resp, int status) {
+                    handle_identify_response(resp, status);
+                });
         });
 }
 

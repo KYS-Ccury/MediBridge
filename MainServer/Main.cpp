@@ -60,8 +60,9 @@ int main(int argc, char *argv[])
         .setIdleConnectionTimeout(60)                         // 유휴 연결 60초 후 종료
         .setKeepaliveRequestsNumber(0);                       // keep-alive 무제한 (LAN 환경)
 
-    // 4-1. 모든 HTTP 요청 단위 로깅 (개발·시연 단계 가시성용)
-    //   "[REQ] 192.168.x.x  POST /v1/auth/login" 형태로 stdout 에 한 줄.
+    // 4-1. 모든 HTTP 요청·응답 단위 로깅 (개발·시연 단계 가시성용)
+    //   [REQ] 192.168.x.x  POST /v1/auth/login
+    //   [RES] 192.168.x.x  POST /v1/auth/login → 200 (123 bytes)
     drogon::app().registerPreHandlingAdvice(
         [](const drogon::HttpRequestPtr& req,
            drogon::AdviceCallback&&,
@@ -73,6 +74,21 @@ int main(int argc, char *argv[])
                       << std::endl;
             std::cout.flush();
             next();
+        });
+
+    drogon::app().registerPostHandlingAdvice(
+        [](const drogon::HttpRequestPtr& req,
+           const drogon::HttpResponsePtr& resp)
+        {
+            const int status = resp ? resp->getStatusCode() : 0;
+            const auto body = resp ? resp->getBody() : std::string_view{};
+            std::cout << "[RES] " << req->getPeerAddr().toIpPort()
+                      << "  " << req->getMethodString()
+                      << " "  << req->getPath()
+                      << "  → " << status
+                      << " (" << body.size() << " B)"
+                      << std::endl;
+            std::cout.flush();
         });
 
     // 5. 이벤트 루프 진입 (블록)
