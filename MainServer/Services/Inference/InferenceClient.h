@@ -1,6 +1,10 @@
 // =====================================================
 // InferenceClient — 추론 서버 클라이언트 조립자 (싱글톤 Facade)
 // =====================================================
+// LLM PC (10.10.10.120) 와 Vision PC (10.10.10.128) 를 별도로 호출.
+//   vision()                            → Vision PC
+//   intent()/onboarding()/summary()     → LLM PC
+//
 // 사용 예:
 //   auto& client = InferenceClient::instance();
 //   client.vision().detect_pills(image_path, callback);
@@ -34,7 +38,8 @@ private:
     InferenceClient(const InferenceClient&) = delete;
     InferenceClient& operator=(const InferenceClient&) = delete;
 
-    std::shared_ptr<InferenceClientCommon> common_;
+    std::shared_ptr<InferenceClientCommon> llm_common_;
+    std::shared_ptr<InferenceClientCommon> vision_common_;
     VisionInferenceClient     vision_;
     IntentInferenceClient     intent_;
     OnboardingInferenceClient onboarding_;

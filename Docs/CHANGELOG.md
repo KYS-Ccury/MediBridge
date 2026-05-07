@@ -11,6 +11,20 @@
 
 ## [Unreleased]
 
+### Added (2026-05-07 추가)
+- `MainServer/Services/Auth/PasswordHasher.cpp` 실 구현 (PBKDF2-SHA256 / OpenSSL only)
+- `MainServer/Services/Auth/JwtIssuer.cpp` 실 구현 (HS256 표준 JWT / OpenSSL HMAC)
+- `MainServer/Services/Auth/Authenticator.cpp` + `UserManager.cpp` 실 DB CRUD
+- `MainServer/Services/Inference/InferenceClientCommon.cpp` Drogon HttpClient 실 호출 (post_json/post_file)
+- `MainServer/Services/Inference/InferenceClient.cpp` LLM/Vision 카테고리별 Common 분리 (10.10.10.120 / 10.10.10.128)
+- `MainServer/Config` 에 `MEDIBRIDGE_INFERENCE_LLM_BASE` / `..._VISION_BASE` 환경변수 + 접근자
+- `Docs/시스템 흐름 정리본_ver3.md` — 단일 정본화 통합 (시스템_연결구조 v2.2 + DB ERD v4 + Pill v0.3 + TestMode + Auth + 데이터보관 PC + ChromaDB)
+- `Docs/Old/시스템 흐름 정리본_ver2_2026-05-07.md` (이동)
+
+### Changed (2026-05-07)
+- 모든 라우터(Pill/History/Media/Report/Speech) 의 인증 → `JwtIssuer::extract_user_id_from_header` 로 일괄 교체 (MockAuth 제거, CMake 빌드에서 제외)
+- `Routers/Auth.cpp` — 실 Authenticator/UserManager/JwtIssuer 사용 (signup/login/logout)
+
 ### Verified
 - **WSL Ubuntu 24.04 + Drogon 1.8.7 빌드 성공** (`apt install libdrogon-dev libjsoncpp-dev libpq-dev libsqlite3-dev libhiredis-dev libc-ares-dev libyaml-cpp-dev`).
 - 스모크 테스트 통과 — `/health` 200 (`status:ok, test_mode_active`), `/v1/auth/login` 시드 사용자 로그인 성공, `/v1/pill/pool` 시드 풀 4건 반환, `/v1/pill/onboarding/normalize "타이레놀 등록할게"` → 3 후보 NEED_DISAMBIGUATION + tts_text + choice_token 정상.

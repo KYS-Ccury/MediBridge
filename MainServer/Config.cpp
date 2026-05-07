@@ -38,6 +38,12 @@ void Config::load_from_file(const std::string& path)
     if (const char* pdma = std::getenv("MEDIBRIDGE_PDMA_KEY")) {
         pdma_service_key_ = pdma;
     }
+    if (const char* llm = std::getenv("MEDIBRIDGE_INFERENCE_LLM_BASE")) {
+        inference_llm_base_ = llm;
+    }
+    if (const char* vis = std::getenv("MEDIBRIDGE_INFERENCE_VISION_BASE")) {
+        inference_vision_base_ = vis;
+    }
 
     // TestMode 플래그 — "true"/"1"/"TRUE" 만 활성, 그 외 false
     if (const char* tm = std::getenv("MEDIBRIDGE_TEST_MODE")) {
@@ -105,6 +111,8 @@ std::string Config::db_name()                      const { return db_name_; }
 int         Config::db_pool_size()                 const { return db_pool_size_; }
 std::string Config::inference_server_url()         const { return inference_server_url_; }
 int         Config::inference_request_timeout_ms() const { return inference_request_timeout_ms_; }
+std::string Config::inference_llm_base()           const { return inference_llm_base_; }
+std::string Config::inference_vision_base()        const { return inference_vision_base_; }
 std::string Config::pdma_api_base_url()            const { return pdma_api_base_url_; }
 std::string Config::pdma_service_key()             const { return pdma_service_key_; }
 std::string Config::jwt_secret()                   const { return jwt_secret_; }
