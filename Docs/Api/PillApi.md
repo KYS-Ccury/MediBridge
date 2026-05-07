@@ -2,15 +2,20 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| **버전** | v0.2 |
+| **버전** | v0.3 |
 | **개정일** | 2026-05-07 |
-| **이전 버전** | v0.1 (2026-05-06) → `Docs/Old/Api/PillApi_v0.1_2026-05-07.md` |
+| **이전 버전** | v0.2 (2026-05-07, in-place 갱신) / v0.1 (2026-05-06) → `Docs/Old/Api/PillApi_v0.1_2026-05-07.md` |
 | **모듈** | 모듈 1 (알약 식별 + 안전 점검) |
 | **관련 문서** | [프로토콜 v2 §3.1](../프로토콜_ver2.md), [요구사항 분석서 v2 §5.2 / §5.4 / §6.5](../요구사항_분석서_ver2.md), [DB ERD v3](../DB_ERD_ver3.md) |
 | **공통 규칙** | [ApiOverview.md](ApiOverview.md) |
 
 > 식별·DUR 위험 검출 결과 반환 + 사용자별 약 풀(추가/삭제/전체 리셋) 관리.
 > **DUR 위험 안내는 LLM·RAG 미사용**, 식약처 데이터 정해진 템플릿. **단정 문구 금지**.
+>
+> ⭐ **v0.3 변경 핵심** (Onboarding RAG round-trip 흐름 정의):
+> 1. **신규 — `POST /v1/pill/onboarding/normalize`** (음성 등록 시 약명 정규화 + 동명·동성분 분기 질문 + 다회 round-trip 허용)
+> 2. **TTS 안내 정책** — 응답에 `tts_text` 필드 추가, 클라 자체 TTS 우선 + 메인 서버 TTS fallback 어댑터 구조
+> 3. **횟수·토큰 제한** — round-trip 무한 반복 방지 (`max_rounds`, `max_input_tokens` 명시)
 >
 > ⭐ **v0.2 변경 핵심** (목업 「메디브릿지 목업.pptx」 분석 반영):
 > 1. `IdentifyResponse.candidates[]` 에 **`efficacy_text`·`usage_text`** 추가 (Slide 7 식별 결과 효능·복용법 표시)
@@ -25,7 +30,8 @@
 | HTTP | URL | 설명 | 인증 | 본 버전 |
 | --- | --- | --- | --- | --- |
 | POST | `/v1/pill/identify` | 이미지 + 약 풀로 식별 + DUR 위험 검출 | ✓ | v0.2 (확장) |
-| POST | `/v1/pill/identify/narrow` ⭐ | **단계별 속성 좁히기** (음성·이미지로 식별 어려울 때 fallback) | ✓ | v0.2 (신규) |
+| POST | `/v1/pill/identify/narrow` | 단계별 속성 좁히기 (음성·이미지로 식별 어려울 때 fallback) | ✓ | v0.2 (신규) |
+| POST | `/v1/pill/onboarding/normalize` ⭐ | **음성 등록 약명 정규화** (RAG → 식약처 매칭 → 동명·동성분 분기 질문) | ✓ | **v0.3 (신규)** |
 | GET | `/v1/pill/pool` | 사용자 약 풀 조회 | ✓ | v0.2 (확장) |
 | POST | `/v1/pill/pool` | 약 풀에 약 추가 (등록) | ✓ | v0.2 (확장) |
 | DELETE | `/v1/pill/pool/{pool_id}` | 약 1건 개별 삭제 (soft delete) | ✓ | v0.1 |
@@ -268,7 +274,212 @@
 
 ---
 
-## 3. GET /v1/pill/pool — 사용자 약 풀 조회 (v0.2 확장)
+## 3. POST /v1/pill/onboarding/normalize ⭐ 신규 (v0.3) — 음성 등록 약명 정규화
+
+사용자가 음성으로 약을 등록할 때, **의료용어를 모르는 상태의 발화**(예: "빨간 알약 진통제 등록해줘")에서 **식약처 의약품 정보 RAG** 를 활용해 약명·성분 후보를 추출·정규화한다. 동명·동성분 약이 여러 개일 때 **분기 질문 round-trip** 을 다회 반복해 사용자가 정확히 어떤 약인지 확정한 뒤, 그 결과(`item_code`)를 [§5 `POST /v1/pill/pool`](#4-post-v1pillpool--약-풀에-약-추가-v02-확장) 으로 풀에 등록.
+
+### 설계 원칙
+
+- **stateless** — 세션 유지 X. 클라가 누적 컨텍스트(이전 후보·선택 토큰)를 매번 송신.
+- **다회 round-trip 허용** — 분기 질문이 여러 단계 필요할 수 있음 (예: 약명 → 용량 → 제형).
+- **RAG 영역 제한 준수** — Onboarding RAG ✅, 의료 안내(DUR/진단) X ([아이템 v3 §6.3](../아이템_ver3.md), [요구사항 분석서 v2 §3.3](../요구사항_분석서_ver2.md)).
+- **TTS 안내 책임은 클라** — 응답의 `question.tts_text` 를 받아 클라 자체 TTS (Qt6 `QTextToSpeech` + Windows SAPI 한국어) 로 합성. 환경 미지원·품질 부족 시 메인 서버 TTS 어댑터로 fallback.
+- **남용 방어 (TODO 구현)** — 다회 round-trip 무한 반복 방지: `max_rounds` (기본 5회), `max_input_tokens` (기본 200), 1분당 호출 횟수 제한. 본 v0.3 명세에 한계만 선언, 구현 시 운영 가능 임계값 측정 후 확정.
+
+### 요청
+
+- 헤더: `Content-Type: application/json`, `Authorization: Bearer <JWT>` ✓
+- 바디:
+```json
+{
+  "utterance_request_id": "utt_123",
+  "utterance_text": "타이레놀 등록할게",
+  "round": 1,
+  "prev_choice_token": null,
+  "prev_selection": null
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `utterance_request_id` | string | – | `POST /v1/speech/utterance` 의 request_id (가능한 경우 매핑) |
+| `utterance_text` | string | ✓ (round=1 시) | 폰 STT 결과 또는 사용자 직접 입력 텍스트. 길이 제한 200자 |
+| `round` | int | ✓ | 라운드 번호 (1부터). `max_rounds` 초과 시 422 반환 |
+| `prev_choice_token` | string | – (round≥2 필수) | 직전 응답의 `question.choice_token`. 서버가 컨텍스트 복원에 사용 |
+| `prev_selection` | object | – (round≥2 필수) | 사용자 응답: `{ "field": "dosage", "value": "500mg" }` 또는 `{ "field": "candidate_pick", "item_code": "201801234" }` |
+
+### 응답
+
+#### Case A: `state == "NEED_DISAMBIGUATION"` — 분기 질문 필요
+
+- **200 OK**
+```json
+{
+  "state": "NEED_DISAMBIGUATION",
+  "round": 1,
+  "max_rounds": 5,
+  "candidates_count": 3,
+  "candidates": [
+    {
+      "item_code": "201801234",
+      "item_name": "타이레놀정500mg",
+      "ingredient_name": "아세트아미노펜 500mg",
+      "classification_name": "해열, 진통, 소염제",
+      "manufacturer": "한국얀센",
+      "hint": "가장 일반적인 형태"
+    },
+    {
+      "item_code": "201805678",
+      "item_name": "타이레놀이알서방정",
+      "ingredient_name": "아세트아미노펜 650mg",
+      "classification_name": "해열, 진통, 소염제",
+      "manufacturer": "한국얀센",
+      "hint": "8시간 지속형 (서방정)"
+    },
+    {
+      "item_code": "201809999",
+      "item_name": "어린이타이레놀정",
+      "ingredient_name": "아세트아미노펜 80mg",
+      "classification_name": "해열, 진통, 소염제",
+      "manufacturer": "한국얀센",
+      "hint": "어린이용 저용량"
+    }
+  ],
+  "question": {
+    "field": "dosage",
+    "text": "타이레놀이 세 종류가 있어요. 일반 500mg 일까요, 8시간 지속형 650mg 일까요, 아니면 어린이용 80mg 일까요?",
+    "tts_text": "타이레놀이 세 종류 있는데요. 일반 오백 밀리그램, 팔시간 지속형 육백오십 밀리그램, 어린이용 팔십 밀리그램, 어떤 거 드셨어요?",
+    "options": [
+      { "value": "201801234", "label": "일반 500mg" },
+      { "value": "201805678", "label": "8시간 지속 650mg" },
+      { "value": "201809999", "label": "어린이용 80mg" }
+    ],
+    "choice_token": "ck_e8f4a..."
+  }
+}
+```
+
+| 필드 | 설명 |
+| --- | --- |
+| `state` | `"NEED_DISAMBIGUATION"` — 분기 질문 필요. 클라는 `tts_text` 를 TTS 안내 후 사용자 응답 수신, 다음 라운드 호출 |
+| `candidates[]` | RAG 검색으로 추출된 후보 (식약처 의약품 정보 기준). 단정 표현 X — 객관 정보만 |
+| `candidates[].hint` | 사용자 식별 보조 한 줄 힌트 (LLM 생성, 식약처 정보 인용 형태) |
+| `question.text` | 화면 표시용 |
+| `question.tts_text` | TTS 합성용 (숫자·약어를 한글로 풀어쓴 형태) |
+| `question.choice_token` | 다음 라운드 호출 시 `prev_choice_token` 으로 송신. 서버 컨텍스트 복원 |
+| `max_rounds` | 본 흐름의 라운드 상한 (기본 5) |
+
+#### Case B: `state == "RESOLVED"` — 단일 후보 확정
+
+- **200 OK**
+```json
+{
+  "state": "RESOLVED",
+  "round": 2,
+  "resolved": {
+    "item_code": "201801234",
+    "item_name": "타이레놀정500mg",
+    "ingredient_name": "아세트아미노펜 500mg",
+    "classification_name": "해열, 진통, 소염제",
+    "manufacturer": "한국얀센",
+    "efficacy_text": "(식약처 e약은요 본문 그대로 인용)",
+    "usage_text": "(식약처 e약은요 본문 그대로 인용)"
+  },
+  "confirmation": {
+    "text": "타이레놀정 500mg 으로 등록할게요. 맞으신가요?",
+    "tts_text": "타이레놀정 오백 밀리그램으로 등록할게요. 맞으세요?"
+  }
+}
+```
+
+> 클라는 `confirmation.tts_text` 안내 후 사용자 "네" 응답을 받으면 [§5 `POST /v1/pill/pool`](#4-post-v1pillpool--약-풀에-약-추가-v02-확장) 으로 `item_code` 송신.
+
+#### Case C: `state == "NOT_FOUND"` — 매칭 실패
+
+- **200 OK**
+```json
+{
+  "state": "NOT_FOUND",
+  "round": 1,
+  "reason": "발화에서 약명 후보를 추출하지 못했습니다.",
+  "tts_text": "약 이름을 듣지 못했어요. 다시 말씀해 주시거나 직접 입력해 주세요.",
+  "fallback_action": "RECAPTURE_OR_MANUAL"
+}
+```
+
+| `fallback_action` | 의미 |
+| --- | --- |
+| `RECAPTURE_OR_MANUAL` | 음성 재발화 또는 직접 입력 권유 |
+| `NARROW_DOWN` | 단계별 속성 좁히기 (`/v1/pill/identify/narrow`) 권유 |
+
+### 종료 조건
+
+| 조건 | `state` | 동작 |
+| --- | --- | --- |
+| 후보 1건 + 신뢰도 충분 | `RESOLVED` | `confirmation` 안내 후 사용자 확인 → `/v1/pill/pool` |
+| 후보 2~5건 | `NEED_DISAMBIGUATION` | `question` 안내 후 다음 라운드 |
+| 후보 0건 | `NOT_FOUND` | `fallback_action` 안내 |
+| `round > max_rounds` | (422 에러) | 무한 반복 방어 — 클라가 etablish 한 후 처음부터 재시도 권유 |
+
+### 에러
+
+| 상태 | 코드 | 의미 |
+| --- | --- | --- |
+| 400 | `INVALID_UTTERANCE_TEXT` | 빈 문자열·길이 초과 (200자 제한) |
+| 400 | `MISSING_PREV_CHOICE_TOKEN` | round≥2 인데 `prev_choice_token` 없음 |
+| 400 | `INVALID_PREV_CHOICE_TOKEN` | 만료·서명 불일치 |
+| 401 | `INVALID_TOKEN` / `EXPIRED_TOKEN` | 인증 실패 |
+| 422 | `MAX_ROUNDS_EXCEEDED` | round_max 초과 (남용 방어) |
+| 429 | `RATE_LIMITED` | 1분당 호출 횟수 초과 (남용 방어) |
+
+### Schemas/ 매핑
+
+- `MainServer/Schemas/PillSchema.h::OnboardingNormalizeRequest`
+- `MainServer/Schemas/PillSchema.h::OnboardingNormalizeResponse`
+- `MainServer/Schemas/PillSchema.h::OnboardingCandidate`
+- `MainServer/Schemas/PillSchema.h::OnboardingQuestion` (text + tts_text + options + choice_token)
+- `MainServer/Schemas/PillSchema.h::OnboardingConfirmation` (text + tts_text)
+
+### 백엔드 처리 흐름
+
+```
+[클라 PC] utterance_text 송신 (round=1)
+   ↓
+[메인서버] PillService::onboarding_normalize()
+   ↓ JWT 검증 + max_rounds·max_input_tokens·rate_limit 체크
+   ↓
+[메인서버 → LLM PC 10.10.10.120] /v1/llm/onboarding/extract_and_search
+   ↓ ① 약명 후보 추출 (NER on utterance_text)
+   ↓ ② 식약처 의약품 정보 RAG 검색 (**ChromaDB 벡터 DB** over 낱알식별 + e약은요)
+   ↓ ③ 후보 정렬 + hint 생성
+   ↓
+[LLM PC → 메인서버] candidates[]
+   ↓
+[메인서버] 후보 수에 따라 분기:
+   - 1건 → RESOLVED (confirmation 생성, e약은요 인용)
+   - 2~5건 → NEED_DISAMBIGUATION (question 생성, choice_token 발급)
+   - 0건 → NOT_FOUND (fallback_action 결정)
+   ↓
+[메인서버 → 클라 PC] OnboardingNormalizeResponse
+   ↓
+[클라 PC] tts_text 를 클라 자체 TTS 로 합성·재생
+   ↓ (어댑터 — Qt6 QTextToSpeech, fallback 시 메인서버 TTS API)
+   ↓
+[사용자 응답 수신 (음성 또는 터치)]
+   ↓ (NEED_DISAMBIGUATION 인 경우 round=2 재호출)
+   ↓ (RESOLVED + 사용자 OK 인 경우 POST /v1/pill/pool 호출로 종료)
+```
+
+### 표현 톤 정책 (필수 준수)
+
+- ❌ "이 약을 드시면 됩니다" / "복용 가능합니다"
+- ✅ "이 약 맞으세요?" / "확인해 주세요" / "약사·의사 상담을 권유드립니다"
+- `efficacy_text` / `usage_text` 는 **식약처 e약은요 본문 그대로 인용** (LLM 자연어 변환 X)
+- `hint` 는 객관 정보만 (예: "8시간 지속형", "어린이용") — "이 약이 가장 좋아요" 같은 평가 표현 X
+
+---
+
+## 4. GET /v1/pill/pool — 사용자 약 풀 조회 (v0.2 확장)
 
 ### 요청
 - 헤더: `Authorization: Bearer <JWT>` ✓
@@ -309,7 +520,7 @@
 
 ---
 
-## 4. POST /v1/pill/pool — 약 풀에 약 추가 (v0.2 확장)
+## 5. POST /v1/pill/pool — 약 풀에 약 추가 (v0.2 확장)
 
 ### 요청
 - 헤더: `Content-Type: application/json`, `Authorization: Bearer <JWT>` ✓
@@ -339,13 +550,13 @@
 
 ---
 
-## 5. DELETE /v1/pill/pool/{pool_id} — 개별 삭제 (v0.1 그대로)
+## 6. DELETE /v1/pill/pool/{pool_id} — 개별 삭제 (v0.1 그대로)
 
 soft delete: `is_active = FALSE`, `deactivated_at = NOW()`. (v0.1 명세 그대로)
 
 ---
 
-## 6. DELETE /v1/pill/pool/all — 전체 리셋 (v0.1 그대로)
+## 7. DELETE /v1/pill/pool/all — 전체 리셋 (v0.1 그대로)
 
 `X-Confirm-Reset: true` 헤더 필수. 시스템이 임의로 호출 금지. (v0.1 명세 그대로)
 
@@ -357,3 +568,4 @@ soft delete: `is_active = FALSE`, `deactivated_at = NOW()`. (v0.1 명세 그대�
 | --- | --- | --- |
 | v0.1 | 2026-05-06 | 초안 — 식별·DUR + 약 풀 CRUD, soft delete, 전체 리셋 안전 가드 |
 | v0.2 | 2026-05-07 | 목업 분석 반영 — ① `PillCandidate` 에 `classification_name`·`efficacy_text`·`usage_text` 추가 (Slide 7) ② `PoolItem` 에 `user_category`·`classification_name` 추가 (Slide 6) ③ `guidance.fallback_action` enum 추가 (RECAPTURE/NARROW_DOWN/CHECK_ENGRAVING) ④ **신규 `POST /v1/pill/identify/narrow`** — 단계별 속성 좁히기 흐름 (Slide 3·9·12, stateless·LLM 미사용·Rule-based DB 조회) ⑤ DB ERD v3 매핑 |
+| v0.3 | 2026-05-07 | **신규 `POST /v1/pill/onboarding/normalize`** — 음성 등록 시 의료용어를 모르는 사용자를 위한 약명 정규화 RAG round-trip. ① stateless 다회 round-trip 허용 (`max_rounds=5` 기본, 토큰·rate_limit 한계 선언) ② 응답에 `tts_text` 필드 (클라 자체 TTS 우선 + 메인서버 TTS fallback 어댑터) ③ `state` 3분기 (NEED_DISAMBIGUATION / RESOLVED / NOT_FOUND) ④ 표현 톤 정책 준수 (e약은요 본문 인용, 단정 표현 X) ⑤ Schemas/ 매핑 추가 (`OnboardingNormalizeRequest/Response`, `OnboardingCandidate/Question/Confirmation`) |

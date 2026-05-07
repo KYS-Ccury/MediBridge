@@ -30,7 +30,7 @@
 | 8 | FastAPI + Uvicorn | 추론 REST API 서버 | ⏳ |
 | 9 | (확장) Whisper STT — `openai-whisper` 또는 `faster-whisper` | 폰 STT fallback | ⏳ |
 | 10 | LLM (의도 분류기·등록 RAG) — 모델 추후 선정 | Stage 0.5 + Onboarding | ⏳ |
-| 11 | RAG 인프라 (벡터 DB 등) — 선정 후 채움 | 비의료 영역 RAG | ⏳ |
+| 11 | **ChromaDB** 벡터 DB — `pip install chromadb` | 비의료 영역 RAG (Onboarding 약명 정규화·일반 안내). LLM PC `10.10.10.120` 동거 | ⏳ |
 | 12 | systemd 서비스 등록 | 자동 시작 | ⏳ |
 
 ---

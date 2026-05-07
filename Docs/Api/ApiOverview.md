@@ -3,11 +3,16 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | API 명세서 인덱스 + 공통 규칙 |
-| **버전** | v0.2 |
+| **버전** | v0.3 |
 | **개정일** | 2026-05-07 |
-| **이전 버전** | v0.1 (2026-05-06) → `Docs/Old/Api/ApiOverview_v0.1_2026-05-07.md` |
+| **이전 버전** | v0.2 (2026-05-07, 호환 변경) / v0.1 (2026-05-06) → `Docs/Old/Api/ApiOverview_v0.1_2026-05-07.md` |
 
 > 본 폴더(`Docs/Api/`)는 메디브릿지 클라이언트 ↔ 메인 서버 ↔ 추론 서버 간의 **REST API 변경 불가 계약**을 정의한다.
+>
+> ⭐ **v0.3 변경 핵심** (시스템_연결구조 v2.1 반영):
+> - **§2 호스트 표 IP 확정** — 메인 10.10.10.97 / 데이터 보관 10.10.10.122 / **LLM 추론 10.10.10.120 / Vision 추론 10.10.10.128** (추론 서버 카테고리별 2대 분리)
+> - **§2 베이스 URL 분기** — `INFERENCE_LLM_BASE` / `INFERENCE_VISION_BASE` 명시 (학습+추론 동거, 네트워크 분리 가능 설계)
+> - 음성 텍스트 추론은 LLM 서버, 이미지 식별 추론은 Vision 서버 — 라우팅 책임은 메인 서버
 >
 > ⭐ **v0.2 변경 핵심** (목업 「메디브릿지 목업.pptx」 반영):
 > - **PillApi 확장** — `IdentifyResponse` 에 `efficacy_text`/`usage_text` 추가, `PoolItem` 에 `user_category` 추가
@@ -25,18 +30,23 @@
 | [ReportApi.md](ReportApi.md) | 모듈 5 (통합 보고서) | `GET /v1/report/generate` | v0.1 |
 | [MediaApi.md](MediaApi.md) | 미디어 송수신 | `POST /v1/media/image` | v0.1 |
 | [SpeechApi.md](SpeechApi.md) | 음성 텍스트 (폰 STT) | `POST /v1/speech/utterance` | v0.1 |
-| [PillApi.md](PillApi.md) | 모듈 1 (식별·DUR + 약 풀 + 단계별 좁히기) | `POST /v1/pill/identify`, `/v1/pill/identify/narrow` ⭐, `/v1/pill/pool/*` | **v0.2** |
+| [PillApi.md](PillApi.md) | 모듈 1 (식별·DUR + 약 풀 + 단계별 좁히기 + Onboarding 정규화) | `POST /v1/pill/identify`, `/v1/pill/identify/narrow`, `/v1/pill/onboarding/normalize` ⭐, `/v1/pill/pool/*` | **v0.3** |
 | [MonitoringApi.md](MonitoringApi.md) | 자원 모니터링 (전 영역) | `GET /health`, `GET /metrics` | v0.1 |
 
 ---
 
 ## 2. 호스트·포트·버전
 
-| 서버 | OS | 호스트 | 기본 포트 | 베이스 URL |
+| 서버 | OS | 호스트 (LAN `10.10.10.0/24`) | 기본 포트 | 베이스 URL |
 | --- | --- | --- | --- | --- |
 | Client (PhoneAdapter) | Windows 10/11 | `localhost` (폰 → adb reverse) | 8000 | `http://localhost:8000` |
-| MainServer | Ubuntu 24.04 | LAN 고정 IP | 8001 | `http://<MAIN_IP>:8001/v1` |
-| InferenceServer | Ubuntu 24.04 (GPU) | LAN 고정 IP | 8002 | `http://<INF_IP>:8002/v1` |
+| **MainServer** | Ubuntu 24.04 | **10.10.10.97** | 8001 | `http://10.10.10.97:8001/v1` |
+| **DataStoragePC** ⭐ | Ubuntu 24.04 | **10.10.10.122** | 8004 (예정) | 메인서버 발급 단기 서명 토큰 + 직접 PUT/GET (사진 전용) |
+| **InferenceServer (LLM)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.120** | 8002 | `http://10.10.10.120:8002/v1` (Stage 0.5 의도 분류 / Onboarding RAG / 일반 안내) |
+| **InferenceServer (Vision)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.128** | 8003 | `http://10.10.10.128:8003/v1` (YOLO·PaddleOCR·OpenCV) |
+
+> 📌 **추론 서버 카테고리별 2대 분리** — 학습+추론 동거, 네트워크 분리 가능 설계. 향후 PC 증설 시 학습/추론 PC 분리해도 포트·베이스 URL 그대로 유지.
+> 📌 **추론 라우팅 책임은 메인 서버** — 클라는 메인 서버 단일 엔드포인트만 호출. 메인 서버가 텍스트 입력은 `INFERENCE_LLM_BASE`, 이미지 입력은 `INFERENCE_VISION_BASE` 로 분기 호출.
 
 > **버전 prefix `/v1/`**: 향후 호환성 깨지는 변경 시 `/v2/` 로 분기.
 > `/v1/` 안에서의 v0.x 변경은 **호환 변경**(필드 추가만, 기존 필드 삭제·타입 변경 X) 으로 제한.
@@ -166,7 +176,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp...
 | `/v1/report/*` | `ReportSchema.h/.cpp` | `ReportRequest/Response` |
 | `/v1/media/*` | `MediaSchema.h/.cpp` | `ImageUploadResponse` |
 | `/v1/speech/*` | `SpeechSchema.h/.cpp` | `UtteranceRequest/Response` |
-| `/v1/pill/*` | `PillSchema.h/.cpp` | `IdentifyRequest/Response`, `PillCandidate`, `PoolItem`, **`NarrowDownRequest/Response`** ⭐ |
+| `/v1/pill/*` | `PillSchema.h/.cpp` | `IdentifyRequest/Response`, `PillCandidate`, `PoolItem`, `NarrowDownRequest/Response`, **`OnboardingNormalizeRequest/Response`·`OnboardingCandidate/Question/Confirmation`** ⭐ |
 | `/health`, `/metrics` | `HealthSchema.h/.cpp` | `HealthResponse`, `MetricsResponse` |
 
 ---
@@ -177,3 +187,4 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp...
 | --- | --- | --- | --- |
 | v0.1 | 2026-05-06 | 팀 (3인) | 초안 — 호스트·포트, 공통 헤더, 표준 응답·에러, 상태 코드, JWT, 페이지네이션, 표현 톤, Schemas 매핑 |
 | v0.2 | 2026-05-07 | 팀 (3인) | 목업 분석 반영 — PillApi 확장(`efficacy_text`/`usage_text`/`user_category` 추가), 신규 `POST /v1/pill/identify/narrow` (단계별 좁히기), DB ERD v3 매핑. 다른 명세는 변경 없음 (호환 변경) |
+| v0.3 | 2026-05-07 | 팀 (3인) | 시스템_연결구조 v2.1 반영 — §2 호스트 표 IP 확정(메인 10.10.10.97 / 데이터보관 10.10.10.122 / **LLM 10.10.10.120 / Vision 10.10.10.128**), 추론 서버 카테고리별 2대 분리, 학습+추론 동거(네트워크 분리 가능 설계). + **PillApi v0.3** 인덱스 갱신 (신규 `POST /v1/pill/onboarding/normalize` Onboarding RAG round-trip). 엔드포인트는 호환 변경 (추가만, 기존 X) |
