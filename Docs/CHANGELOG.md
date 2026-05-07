@@ -11,6 +11,13 @@
 
 ## [Unreleased]
 
+### Verified
+- **WSL Ubuntu 24.04 + Drogon 1.8.7 빌드 성공** (`apt install libdrogon-dev libjsoncpp-dev libpq-dev libsqlite3-dev libhiredis-dev libc-ares-dev libyaml-cpp-dev`).
+- 스모크 테스트 통과 — `/health` 200 (`status:ok, test_mode_active`), `/v1/auth/login` 시드 사용자 로그인 성공, `/v1/pill/pool` 시드 풀 4건 반환, `/v1/pill/onboarding/normalize "타이레놀 등록할게"` → 3 후보 NEED_DISAMBIGUATION + tts_text + choice_token 정상.
+- 새 스크립트: `MainServer/Scripts/smoke_setup.sh` (DB·시드 일괄), `smoke_run.sh` (서버 부팅 + 4개 엔드포인트 호출).
+
+
+
 ### Docs
 - (예정) 시스템 흐름 정리본 v3 — `시스템_연결구조_ver2.md` v2.2 통합
 - (예정) DB ERD v5 — 가명화 마이그레이션 SQL 보강

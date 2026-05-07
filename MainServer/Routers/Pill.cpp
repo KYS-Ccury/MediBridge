@@ -21,6 +21,7 @@
 #include <string>
 #include <sstream>
 #include <chrono>
+#include <algorithm>
 
 using medibridge::database::Connection;
 using medibridge::Config;
@@ -472,10 +473,51 @@ void Pill::handle_onboarding_normalize(const drogon::HttpRequestPtr& req,
         }
     }
 
-    // round=1: 발화 텍스트로 약명 LIKE 매칭
+    // round=1: 발화 텍스트에서 약명 후보 추출 후 LIKE 매칭
+    // TestMode 휴리스틱: 발화를 공백·조사로 토큰화한 뒤 가장 길고 의미있는
+    // 토큰 1~3 개를 OR LIKE 로 매칭. 운영 모드는 LLM NER 가 대체.
     try {
-        const std::string like = "%" + reqobj.utterance_text + "%";
-        auto rows = db->execSqlSync(
+        std::vector<std::string> tokens;
+        {
+            // 1) 공백 분리
+            std::string buf;
+            for (char ch : reqobj.utterance_text) {
+                if (ch == ' ' || ch == '\t' || ch == '\n') {
+                    if (!buf.empty()) { tokens.push_back(buf); buf.clear(); }
+                } else {
+                    buf.push_back(ch);
+                }
+            }
+            if (!buf.empty()) tokens.push_back(buf);
+
+            // 2) 한국어 공통 동사·조사 접미 제거 (단순)
+            static const std::vector<std::string> kSuffixes = {
+                "을", "를", "은", "는", "이", "가", "에",
+                "이야", "이에요", "예요", "이다",
+                "등록할게", "등록해", "등록", "추가할게", "추가해", "추가",
+                "먹을게", "먹어", "복용",
+            };
+            for (auto& t : tokens) {
+                for (const auto& sfx : kSuffixes) {
+                    if (t.size() > sfx.size()
+                        && t.compare(t.size() - sfx.size(), sfx.size(), sfx) == 0)
+                    {
+                        t.resize(t.size() - sfx.size());
+                    }
+                }
+            }
+            // 3) 공백 토큰 / 너무 짧은 토큰 제거 + 길이 desc 정렬
+            tokens.erase(std::remove_if(tokens.begin(), tokens.end(),
+                [](const std::string& s) { return s.size() < 2; }), tokens.end());
+            std::sort(tokens.begin(), tokens.end(),
+                [](const std::string& a, const std::string& b) { return a.size() > b.size(); });
+            if (tokens.size() > 3) tokens.resize(3);
+        }
+
+        if (tokens.empty()) tokens.push_back(reqobj.utterance_text);
+
+        // OR LIKE — 파라미터 바인딩 유지
+        std::string sql =
             "SELECT p.item_code, p.drug_name, p.classification_name, p.manufacturer, "
             "       d.efficacy_text, d.usage_text, "
             "       i.ingredient_name "
@@ -483,10 +525,21 @@ void Pill::handle_onboarding_normalize(const drogon::HttpRequestPtr& req,
             "LEFT JOIN drug_overview d ON d.item_code = p.item_code "
             "LEFT JOIN pill_ingredient_mapping pm ON pm.item_code = p.item_code "
             "LEFT JOIN ingredient_info i ON i.ingredient_code = pm.ingredient_code "
-            "WHERE p.drug_name LIKE ? "
-            "ORDER BY p.item_code "
-            "LIMIT 5",
-            like);
+            "WHERE 1=0";
+        std::vector<std::string> likes;
+        for (const auto& t : tokens) {
+            sql += " OR p.drug_name LIKE ?";
+            likes.push_back("%" + t + "%");
+        }
+        sql += " GROUP BY p.item_code ORDER BY p.item_code LIMIT 5";
+
+        orm::Result rows = [&]() {
+            switch (likes.size()) {
+                case 1: return db->execSqlSync(sql, likes[0]);
+                case 2: return db->execSqlSync(sql, likes[0], likes[1]);
+                default: return db->execSqlSync(sql, likes[0], likes[1], likes[2]);
+            }
+        }();
 
         if (rows.empty()) {
             schemas::OnboardingNormalizeResponse resp;
