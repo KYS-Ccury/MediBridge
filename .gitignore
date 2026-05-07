@@ -1,67 +1,67 @@
 # =============================================================
 # MediBridge 프로젝트 .gitignore
 # =============================================================
-# 본 파일은 Git이 추적하지 않을 파일·폴더 목록을 정의한다.
-# 각 줄이 무엇을 제외하는지 한국어 주석으로 설명.
+# ⚠ git의 .gitignore 는 inline 주석(`pattern  # comment`)을 지원하지 않음.
+# 주석은 반드시 별도 줄에. 패턴 줄에는 패턴만.
 # =============================================================
 
 # ─────────────────────────────────────────────
-# Qt / C++ 빌드 산출물 (Client, MainServer 공통)
+# Qt / C++ 빌드 산출물 (모든 하위 디렉토리 포함)
 # ─────────────────────────────────────────────
-build/                       # CMake 빌드 디렉토리 (관례)
-**/build/                    # 하위 디렉토리의 build/ 도 모두
-build-*/                     # Qt Creator 다른 빌드 디렉토리 (예: build-Poc-...)
+build/
+**/build/
+build-*/
 **/build-*/
-cmake-build-*/               # CLion 빌드 디렉토리
+cmake-build-*/
 **/cmake-build-*/
-out/                         # Visual Studio 빌드 디렉토리
+out/
 
-# Qt Creator 사용자별 설정 (빌드 디렉토리·세션·키트 정보 — 개인 환경)
-.qtcreator/
-**/.qtcreator/
-*.user.lock
-
-# CMake 산출물
-CMakeCache.txt               # CMake 캐시 (빌드마다 재생성)
-CMakeFiles/                  # CMake 내부 산출물
-cmake_install.cmake          # 설치 스크립트 (자동 생성)
-CTestTestfile.cmake          # 테스트 설정 (자동 생성)
-Makefile                     # 자동 생성 Makefile (CMake가 만듦)
-*.cmake                      # 자동 생성 cmake 파일
+# CMake 자동 생성 산출물
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake
 
 # 컴파일 산출물
-*.o                          # 오브젝트 파일
-*.obj                        # Windows 오브젝트 파일
-*.exe                        # 실행 파일 (빌드 시 생성)
-*.dll                        # 동적 라이브러리
-*.so                         # Linux 공유 라이브러리
-*.dylib                      # macOS 동적 라이브러리
-*.a                          # 정적 라이브러리
-*.lib                        # Windows 정적 라이브러리
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
 
 # Qt 자동 생성 파일
-*.user                       # Qt Creator 사용자별 설정 (개인용)
-*.user.*                     # Qt Creator 백업
-moc_*.cpp                    # Meta Object Compiler 산출물
+*.user
+*.user.*
+*.user.lock
+moc_*.cpp
 moc_*.h
-qrc_*.cpp                    # Resource Compiler 산출물
-ui_*.h                       # UI 컴파일러 산출물
+qrc_*.cpp
+ui_*.h
+
+# Qt Creator 사용자별 설정
+.qtcreator/
+**/.qtcreator/
 
 # ─────────────────────────────────────────────
 # Python (InferenceServer, TrainingServer)
 # ─────────────────────────────────────────────
-__pycache__/                 # Python 바이트코드 캐시
-*.pyc                        # 컴파일된 Python 파일
-*.pyo                        # 최적화된 Python 파일
-*.pyd                        # Python 확장 모듈
-.pytest_cache/               # pytest 캐시
-.mypy_cache/                 # mypy 타입 체크 캐시
-.tox/                        # tox 테스트 환경
-*.egg-info/                  # 패키지 메타데이터
-dist/                        # 배포 패키지
-.coverage                    # 커버리지 리포트
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.tox/
+*.egg-info/
+dist/
+.coverage
 
-# Python 가상환경 (각 서버별)
+# Python 가상환경
 venv/
 .venv/
 env/
@@ -69,31 +69,31 @@ env/
 # ─────────────────────────────────────────────
 # IDE / 에디터
 # ─────────────────────────────────────────────
-.vscode/                     # Visual Studio Code 워크스페이스 설정
-.idea/                       # JetBrains (CLion, PyCharm 등) 설정
-*.swp                        # Vim 임시 파일
+.vscode/
+.idea/
+*.swp
 *.swo
-*~                           # 백업 파일
+*~
 
 # ─────────────────────────────────────────────
-# AI 모델 가중치 / 데이터셋 (용량 큰 파일은 Git LFS 권장)
+# AI 모델 가중치 / 데이터셋
 # ─────────────────────────────────────────────
-*.pt                         # PyTorch 가중치
-*.pth                        # PyTorch 가중치
-*.onnx                       # ONNX 모델
-*.weights                    # 일반 가중치
-*.h5                         # Keras/TensorFlow 가중치
-*.ckpt                       # 체크포인트
-*.tflite                     # TensorFlow Lite
+*.pt
+*.pth
+*.onnx
+*.weights
+*.h5
+*.ckpt
+*.tflite
 
-# 데이터셋 (학습 서버 전용, 수십 GB 가능)
-TrainingServer/Datasets/*    # 데이터셋 본체는 추적 X
-!TrainingServer/Datasets/.gitkeep   # 폴더 자체는 보존
+# 데이터셋 (학습 서버 전용)
+TrainingServer/Datasets/*
+!TrainingServer/Datasets/.gitkeep
 
 # ─────────────────────────────────────────────
 # 환경 변수 / 시크릿
 # ─────────────────────────────────────────────
-.env                         # 환경 변수 파일 (DB 비밀번호 등)
+.env
 .env.local
 *.secret
 secrets/
@@ -101,20 +101,20 @@ secrets/
 # ─────────────────────────────────────────────
 # 로그 / 임시 파일 / 받은 파일
 # ─────────────────────────────────────────────
-*.log                        # 로그 파일
-logs/                        # 로그 디렉토리
-*.tmp                        # 임시 파일
+*.log
+logs/
+*.tmp
 *.temp
-received_data/               # PoC에서 폰이 보낸 사진 임시 저장
-uploaded/                    # 업로드 임시 폴더
+received_data/
+uploaded/
 
 # ─────────────────────────────────────────────
-# OS 자동 생성 파일
+# OS 자동 생성
 # ─────────────────────────────────────────────
-Thumbs.db                    # Windows 썸네일 캐시
+Thumbs.db
 ehthumbs.db
-Desktop.ini                  # Windows 폴더 설정
-.DS_Store                    # macOS 폴더 메타데이터
+Desktop.ini
+.DS_Store
 .AppleDouble
 .LSOverride
 
@@ -123,4 +123,4 @@ Desktop.ini                  # Windows 폴더 설정
 # ─────────────────────────────────────────────
 output/
 reports/*.pdf
-!reports/SAMPLE.pdf          # 예시 PDF는 추적 (필요 시)
+!reports/SAMPLE.pdf
