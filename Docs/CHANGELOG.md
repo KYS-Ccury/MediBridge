@@ -12,14 +12,47 @@
 ## [Unreleased]
 
 ### Docs
-- (예정) 시스템 흐름 정리본 v3 — `시스템_연결구조_ver2.md` v2.1 통합
+- (예정) 시스템 흐름 정리본 v3 — `시스템_연결구조_ver2.md` v2.2 통합
 - (예정) DB ERD v5 — 가명화 마이그레이션 SQL 보강
 - (예정) Install/InferenceServerInstall.md 분리 — LLM/Vision 별 설치 매뉴얼
 
 ### Code
-- (예정) MainServer Tier 1 — Auth/JWT/DB 연결 골격 → 동작 코드
+- (예정) Production 모드 Auth — bcrypt/PBKDF2 PasswordHasher + jwt-cpp JwtIssuer 실구현
 - (예정) MainServer Config — `INFERENCE_LLM_BASE` / `INFERENCE_VISION_BASE` 환경변수 분리
-- (예정) Pseudonymization 마이그레이션 SQL 적용
+- (예정) Pseudonymization 익명화 systemd timer 적용
+
+---
+
+## [2026-05-07] — MainServer TestMode 도입 (Tier 1 동작 코드)
+
+### Docs
+- **Added** — `Docs/TestMode.md` v0.1 — 설계서 (DB-backed 더미 정책, seed prefix 규칙, 서비스 분기 패턴)
+- **Changed** — `Docs/Install/MainServerInstall.md` v0.1 → **v0.2** — Python/FastAPI → Drogon C++, 스키마/시드 적용, `MEDIBRIDGE_TEST_MODE` 환경변수, 시드 로그인 검증 절차
+
+### Code (MainServer)
+- **Added** — `Database/Migrations/001_init_schema.sql` — DB ERD v4 전체 스키마 (`users`, `pseudonym_map`, `pill_identification`, `dur_interaction_cache`, `user_medication_pool`, `medication_intake_logs`, `user_reports`, `photo_storage` 등)
+- **Added** — `Database/Seeds/dev_seed.sql` — 테스트 사용자 2 + 가명 매핑 + 식약처 더미 약 10 + DUR 페어 2 + 풀 4 + 이력 6
+- **Added** — `Services/TestMode/MockAuth.h/.cpp` — TestMode mock JWT (`MEDIBRIDGE_TEST.<base64-payload>.<sig>`) 발급/검증
+- **Changed** — `Config.h/.cpp` — `MEDIBRIDGE_TEST_MODE` env 읽기 + production 환경 강제 비활성
+- **Changed** — `Database/Connection.cpp` — Drogon `DbClient::newMysqlClient` 실 초기화 + `ping()`
+- **Changed** — `Schemas/PillSchema.h` v0.2 → **v0.3** — `OnboardingNormalize*` / `OnboardingState` / `OnboardingCandidate/Question/Confirmation/Resolved/PrevSelection` 추가
+- **Added** — `Schemas/PillSchema.cpp` (신규) + `AuthSchema.cpp` + `SpeechSchema.cpp` + `MediaSchema.cpp` + `HistorySchema.cpp` + `ReportSchema.cpp` + `HealthSchema.cpp` — JSON 직렬화 일괄 구현
+- **Renamed** — `SpeechSchema::GuidanceMessage` → `SpeechGuidance` (PillSchema 의 `GuidanceMessage` 와 ODR 충돌 방지)
+- **Changed** — `Routers/Pill.cpp` — `/v1/pill/identify`, `/v1/pill/identify/narrow`, `/v1/pill/onboarding/normalize`, `/v1/pill/pool` (GET/POST), `/v1/pill/pool/{id}` (DELETE), `/v1/pill/pool/all` (DELETE) 모두 동작 구현 (TestMode = DB seed 응답 / 풀 CRUD = 실 동작)
+- **Changed** — `Routers/Pill.h` — `/v1/pill/identify/narrow`, `/v1/pill/onboarding/normalize` 라우트 추가
+- **Changed** — `Routers/Auth.cpp` — signup/login/logout 동작 구현 (TestMode 평문 비교 fallback + mock JWT 발급)
+- **Changed** — `Routers/Speech.cpp` — TestMode 의도 분류 더미 (키워드 룰) + 인젝션 1차 필터
+- **Changed** — `Routers/Media.cpp` — multipart 수신 + `photo_storage` 메타 INSERT (실 파일 discard, 가짜 storage_path)
+- **Changed** — `Routers/History.cpp` — 실 DB CRUD (record / list + 페이지네이션 + time_slot 자동 분류)
+- **Changed** — `Routers/Report.cpp` — 실 DB 집계 + 식약처 e약은요 인용 (LLM 변환 X) + JSON/HTML 출력
+- **Changed** — `Routers/Monitoring.cpp` — `/health` (DB ping) + `/metrics` 기본 응답
+- **Changed** — `Main.cpp` — TestMode 플래그 시작 로그 라인 추가
+- **Changed** — `CMakeLists.txt` — Schemas .cpp 7개 + MockAuth.cpp 등록, OpenSSL::Crypto 링크
+
+### 사유 (Why)
+- 사용자 요청: 추론 서버(LLM/Vision PC)·데이터 보관 PC 가 아직 가동되지 않은 시점에 메인 서버만으로 클라이언트가 진짜처럼 동작하는 서비스를 체험할 수 있어야 함.
+- 사용자 결정: **DB-backed 더미** — 코드에 박힌 const 가 아니라 MariaDB seed 행. 운영 전환 시 row 만 갈아끼우면 끝. SQL 인젝션 방어·prepared statement·가명화 FK 체인이 실전 검증됨.
+- 운영 모드 강제 비활성: `MEDIBRIDGE_ENV=production` 환경에서 `MEDIBRIDGE_TEST_MODE` 가 켜져 있어도 강제로 false 처리 (Config.cpp). 시연 / 발표 시 더미가 노출되는 것 방지.
 
 ---
 

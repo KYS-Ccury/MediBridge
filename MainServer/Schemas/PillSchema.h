@@ -1,6 +1,10 @@
 // =====================================================
-// PillSchema — Pill API 요청/응답 (PillApi.md v0.2)
+// PillSchema — Pill API 요청/응답 (PillApi.md v0.3)
 // =====================================================
+// v0.3 변경 (Onboarding RAG round-trip):
+//   - 신규 OnboardingNormalizeRequest/Response (음성 등록 약명 정규화)
+//   - state 3분기 (NEED_DISAMBIGUATION / RESOLVED / NOT_FOUND)
+//   - tts_text 필드 (TTS 합성용)
 // v0.2 변경 (목업 분석):
 //   - PillCandidate 에 classification_name·efficacy_text·usage_text 추가
 //   - PoolItem 에 user_category·classification_name 추가
@@ -201,6 +205,102 @@ struct PoolAddRequest {
 
     static PoolAddRequest from_json(const Json::Value& json);
     bool is_valid(std::string& error_field, std::string& error_code) const;
+};
+
+// =====================================================
+// ⭐ v0.3 신규: POST /v1/pill/onboarding/normalize
+//   음성 등록 약명 정규화 RAG round-trip
+//   상세: Docs/Api/PillApi.md §3
+// =====================================================
+
+enum class OnboardingState {
+    NEED_DISAMBIGUATION,    // 후보 2~5건 — 분기 질문 필요
+    RESOLVED,               // 단일 후보 확정
+    NOT_FOUND,              // 매칭 실패
+};
+std::string onboarding_state_to_string(OnboardingState s);
+
+/// 다음 라운드 호출 시 prev_selection 의 형태
+struct OnboardingPrevSelection {
+    std::string field;                       // "candidate_pick" / "dosage" / 등
+    std::optional<std::string> value;        // 일반 필드 응답
+    std::optional<std::string> item_code;    // candidate_pick 응답
+    static OnboardingPrevSelection from_json(const Json::Value& json);
+};
+
+struct OnboardingNormalizeRequest {
+    std::optional<std::string> utterance_request_id;
+    std::string utterance_text;              // round=1 필수
+    int round = 1;
+    std::optional<std::string> prev_choice_token;
+    std::optional<OnboardingPrevSelection> prev_selection;
+
+    static OnboardingNormalizeRequest from_json(const Json::Value& json);
+    bool is_valid(std::string& error_field, std::string& error_code) const;
+};
+
+struct OnboardingCandidate {
+    std::string item_code;
+    std::string item_name;
+    std::optional<std::string> ingredient_name;
+    std::optional<std::string> classification_name;
+    std::optional<std::string> manufacturer;
+    std::optional<std::string> hint;
+    Json::Value to_json() const;
+};
+
+struct OnboardingOption {
+    std::string value;
+    std::string label;
+    Json::Value to_json() const;
+};
+
+struct OnboardingQuestion {
+    std::string field;                       // "dosage" / "form" / "candidate_pick"
+    std::string text;                        // 화면 표시용
+    std::string tts_text;                    // TTS 합성용 (숫자·약어 한글 풀어쓰기)
+    std::vector<OnboardingOption> options;
+    std::string choice_token;                // 다음 라운드 컨텍스트 복원용
+    Json::Value to_json() const;
+};
+
+struct OnboardingConfirmation {
+    std::string text;
+    std::string tts_text;
+    Json::Value to_json() const;
+};
+
+struct OnboardingResolved {
+    std::string item_code;
+    std::string item_name;
+    std::optional<std::string> ingredient_name;
+    std::optional<std::string> classification_name;
+    std::optional<std::string> manufacturer;
+    std::optional<std::string> efficacy_text;
+    std::optional<std::string> usage_text;
+    Json::Value to_json() const;
+};
+
+struct OnboardingNormalizeResponse {
+    OnboardingState state;
+    int round = 1;
+    int max_rounds = 5;
+
+    // NEED_DISAMBIGUATION 시
+    int candidates_count = 0;
+    std::vector<OnboardingCandidate> candidates;
+    std::optional<OnboardingQuestion> question;
+
+    // RESOLVED 시
+    std::optional<OnboardingResolved> resolved;
+    std::optional<OnboardingConfirmation> confirmation;
+
+    // NOT_FOUND 시
+    std::optional<std::string> reason;
+    std::optional<std::string> tts_text;
+    std::optional<std::string> fallback_action;       // RECAPTURE_OR_MANUAL / NARROW_DOWN
+
+    Json::Value to_json() const;
 };
 
 } // namespace medibridge::schemas

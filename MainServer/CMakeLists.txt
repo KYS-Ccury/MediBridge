@@ -20,9 +20,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 설치: Ubuntu에서 sudo apt install drogon-dev (또는 소스 빌드)
 find_package(Drogon REQUIRED)
 
+# ----- OpenSSL (TestMode mock JWT 의 SHA256 서명용 — Drogon이 이미 의존) -----
+find_package(OpenSSL REQUIRED)
+
 # ----- 추가 의존성 (필요 시 활성화) -----
 # bcrypt: 비밀번호 해시 — libbcrypt 또는 OpenSSL EVP_PBKDF2 사용
-# JWT:    jwt-cpp 헤더 온리 라이브러리
+# JWT:    jwt-cpp 헤더 온리 라이브러리 (운영 모드)
 # find_package(jwt-cpp REQUIRED)
 
 set(SOURCES
@@ -35,6 +38,14 @@ set(SOURCES
     Routers/Speech.cpp
     Routers/Pill.cpp
     Routers/Monitoring.cpp
+    # Schemas — JSON 직렬화 구현
+    Schemas/AuthSchema.cpp
+    Schemas/HistorySchema.cpp
+    Schemas/MediaSchema.cpp
+    Schemas/SpeechSchema.cpp
+    Schemas/PillSchema.cpp
+    Schemas/ReportSchema.cpp
+    Schemas/HealthSchema.cpp
     # Services — 패턴 B (카테고리별 클래스 분리, 하위 폴더로 그룹)
     Services/Auth/PasswordHasher.cpp
     Services/Auth/JwtIssuer.cpp
@@ -54,6 +65,8 @@ set(SOURCES
     Services/Report/ReportBuilder.cpp
     Services/Report/ReportHtmlRenderer.cpp
     Services/Report/ReportPdfRenderer.cpp
+    # TestMode helpers
+    Services/TestMode/MockAuth.cpp
     Database/Connection.cpp
     Threading/WorkerPool.cpp
     Monitoring/ResourceMonitor.cpp
@@ -95,6 +108,7 @@ set(HEADERS
     Services/Report/ReportBuilder.h
     Services/Report/ReportHtmlRenderer.h
     Services/Report/ReportPdfRenderer.h
+    Services/TestMode/MockAuth.h
     Database/Models.h
     Database/Connection.h
     Threading/WorkerPool.h
@@ -113,6 +127,7 @@ add_executable(MediBridgeMainServer
 
 target_link_libraries(MediBridgeMainServer PRIVATE
     Drogon::Drogon
+    OpenSSL::Crypto
     # bcrypt
     # jwt-cpp::jwt-cpp
 )

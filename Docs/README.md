@@ -24,7 +24,8 @@
 | **통신 프로토콜 골격** | [프로토콜_ver2.md](프로토콜_ver2.md) (v2.1) | API 명세서 우선, 본 문서는 골격 + §3.3 TTS 정책 |
 | **개발 일정·역할 분담** | [개발계획서_ver2.md](개발계획서_ver2.md) | 16일 일정 |
 | **보안 점검 체크리스트** | [SecurityChecklist.md](SecurityChecklist.md) | OWASP 기반 |
-| **설치 매뉴얼** | [Install/](Install/) | OS·기기별 설정 |
+| **TestMode 설계서** | [TestMode.md](TestMode.md) | 추론·파일저장 우회 + DB seed 응답 (개발용) |
+| **설치 매뉴얼** | [Install/](Install/) | OS·기기별 설정. MainServerInstall v0.2 (Drogon + TestMode) |
 
 ---
 

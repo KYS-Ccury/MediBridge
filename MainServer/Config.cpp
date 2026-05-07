@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstdlib>
+#include <cctype>
 #include <stdexcept>
 
 namespace medibridge {
@@ -38,10 +39,29 @@ void Config::load_from_file(const std::string& path)
         pdma_service_key_ = pdma;
     }
 
+    // TestMode 플래그 — "true"/"1"/"TRUE" 만 활성, 그 외 false
+    if (const char* tm = std::getenv("MEDIBRIDGE_TEST_MODE")) {
+        std::string v(tm);
+        for (auto& c : v) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        test_mode_ = (v == "true" || v == "1" || v == "yes" || v == "on");
+    }
+
     // ===== 보안 검증 =====
     const std::string env = std::getenv(MEDIBRIDGE_ENV_VAR)
         ? std::getenv(MEDIBRIDGE_ENV_VAR) : "development";
     const bool is_production = (env == "production");
+
+    // production 환경에서는 TestMode 강제 비활성 (보안 — Docs/TestMode.md §5)
+    if (is_production && test_mode_) {
+        std::cerr << "[Config] WARN: production 환경에서 MEDIBRIDGE_TEST_MODE 가 설정되어 있어 강제로 false 처리합니다." << std::endl;
+        test_mode_ = false;
+    }
+
+    if (test_mode_) {
+        std::cout << "[Config] MEDIBRIDGE_TEST_MODE = TRUE  → 추론·파일저장 우회, DB seed 사용" << std::endl;
+    } else {
+        std::cout << "[Config] MEDIBRIDGE_TEST_MODE = FALSE → 운영 모드 (모든 외부 의존성 활성)" << std::endl;
+    }
 
     // 1) JWT 시크릿 검증
     if (jwt_secret_ == "CHANGE_ME_IN_PRODUCTION" || jwt_secret_.empty()) {
@@ -89,5 +109,6 @@ std::string Config::pdma_api_base_url()            const { return pdma_api_base_
 std::string Config::pdma_service_key()             const { return pdma_service_key_; }
 std::string Config::jwt_secret()                   const { return jwt_secret_; }
 int         Config::jwt_expire_seconds()           const { return jwt_expire_seconds_; }
+bool        Config::test_mode()                    const { return test_mode_; }
 
 } // namespace medibridge

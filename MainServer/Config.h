@@ -44,6 +44,11 @@ public:
     std::string jwt_secret() const;        // HS256 서명 시크릿
     int         jwt_expire_seconds() const;
 
+    // ----- TestMode (Docs/TestMode.md) -----
+    /// true 면 추론 서버·데이터 보관 PC 호출을 우회하고 DB seed 데이터로 응답.
+    /// production 환경(MEDIBRIDGE_ENV=production)에서는 강제로 false.
+    bool test_mode() const;
+
 private:
     Config() = default;
     ~Config() = default;
@@ -69,6 +74,8 @@ private:
 
     std::string jwt_secret_            = "CHANGE_ME_IN_PRODUCTION";
     int         jwt_expire_seconds_    = 86400;   // 24시간
+
+    bool        test_mode_             = false;   // MEDIBRIDGE_TEST_MODE 로 활성화
 };
 
 } // namespace medibridge

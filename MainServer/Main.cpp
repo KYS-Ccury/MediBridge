@@ -28,6 +28,7 @@ int main(int argc, char *argv[])
               << ":" << config.db_port()
               << "/" << config.db_name() << std::endl;
     std::cout << "[Main]   - 추론 서버: " << config.inference_server_url() << std::endl;
+    std::cout << "[Main]   - TestMode: " << (config.test_mode() ? "ON (DB seed 응답)" : "OFF (운영)") << std::endl;
 
     // 2. WorkerPool 초기화 (싱글톤)
     medibridge::threading::WorkerPool::instance().init(
