@@ -1,10 +1,15 @@
+// =====================================================
+// ApiClientCommon — QNetworkAccessManager 기반 실 HTTP 호출
+// =====================================================
 #include "ApiClientCommon.h"
 
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QHttpMultiPart>
 #include <QLoggingCategory>
 #include <QUuid>
+#include <QDebug>
 
 namespace medibridge::network {
 
@@ -16,6 +21,7 @@ ApiClientCommon::ApiClientCommon(const QString& base_url, QObject* parent)
     if (base_url_.endsWith('/')) {
         base_url_.chop(1);
     }
+    qInfo() << "[ApiClientCommon] base_url =" << base_url_;
 }
 
 ApiClientCommon::~ApiClientCommon() = default;
@@ -42,7 +48,9 @@ QNetworkRequest ApiClientCommon::build_request(const QString& path,
 {
     const QUrl url(base_url_ + path);
     QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, content_type);
+    if (!content_type.isEmpty()) {
+        request.setHeader(QNetworkRequest::ContentTypeHeader, content_type);
+    }
 
     if (!access_token_.isEmpty()) {
         request.setRawHeader("Authorization",
@@ -50,6 +58,9 @@ QNetworkRequest ApiClientCommon::build_request(const QString& path,
     }
     request.setRawHeader("X-Request-ID",
                          QUuid::createUuid().toString(QUuid::WithoutBraces).toUtf8());
+    // 자동 redirect 추적
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
     return request;
 }
 
@@ -60,17 +71,54 @@ void ApiClientCommon::send_request(const QString& method,
                                    JsonCallback callback,
                                    const QList<QPair<QByteArray, QByteArray>>& extra_headers)
 {
-    // TODO (영역 C 분담):
-    //   1. build_request(path, content_type) 으로 요청 생성
-    //   2. extra_headers 추가 첨부
-    //   3. method 분기: post/get/deleteResource() 등
-    //   4. QNetworkReply::finished → 콜백 호출
-    //   5. 401 감지 시 token_expired emit
-    //   6. 네트워크 에러 시 network_error emit
-    Q_UNUSED(method); Q_UNUSED(path); Q_UNUSED(body);
-    Q_UNUSED(content_type); Q_UNUSED(extra_headers);
-    qInfo() << "[ApiClientCommon] send_request — TODO" << method << path;
-    if (callback) callback(QByteArray("{\"todo\":true}"), 200);
+    QNetworkRequest request = build_request(path, content_type);
+    for (const auto& kv : extra_headers) {
+        request.setRawHeader(kv.first, kv.second);
+    }
+
+    qInfo().nospace() << "[ApiClientCommon] → " << method << " " << path
+                      << " (body " << body.size() << "B)";
+
+    QNetworkReply* reply = nullptr;
+    const QString verb = method.toUpper();
+    if (verb == "GET") {
+        reply = network_manager_->get(request);
+    } else if (verb == "POST") {
+        reply = network_manager_->post(request, body);
+    } else if (verb == "PUT") {
+        reply = network_manager_->put(request, body);
+    } else if (verb == "DELETE") {
+        // body 가 비어있어도 sendCustomRequest 로 일관 처리
+        reply = network_manager_->sendCustomRequest(request, "DELETE", body);
+    } else {
+        reply = network_manager_->sendCustomRequest(request, verb.toUtf8(), body);
+    }
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, method, path, callback]() {
+        const int status = reply->attribute(
+            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray response_body = reply->readAll();
+        const auto net_err = reply->error();
+
+        qInfo().nospace() << "[ApiClientCommon] ← " << method << " " << path
+                          << "  status=" << status
+                          << "  body=" << response_body.size() << "B";
+
+        if (net_err != QNetworkReply::NoError && status == 0) {
+            // 네트워크 자체 실패 (DNS / 연결 거부 / 타임아웃 등)
+            const QString reason = reply->errorString();
+            qWarning() << "[ApiClientCommon] 네트워크 오류:" << reason;
+            emit network_error(reason);
+            if (callback) callback(QByteArray(), 0);
+        } else {
+            if (status == 401) {
+                emit token_expired();
+            }
+            if (callback) callback(response_body, status);
+        }
+
+        reply->deleteLater();
+    });
 }
 
 } // namespace medibridge::network

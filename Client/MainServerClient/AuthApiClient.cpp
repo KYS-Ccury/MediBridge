@@ -32,12 +32,20 @@ void AuthApiClient::login(const QString& email,
                           JsonCallback callback)
 {
     QJsonObject body{{"email", email}, {"password", password}};
-    auto common = common_;   // 콜백에서 사용
+    auto common = common_;
     common_->send_request("POST", "/v1/auth/login",
         QJsonDocument(body).toJson(QJsonDocument::Compact),
         "application/json",
         [common, cb = std::move(callback)](const QByteArray& resp, int status) {
-            // TODO: 응답 파싱 → access_token 추출 → common->set_access_token()
+            if (status == 200) {
+                const auto doc = QJsonDocument::fromJson(resp);
+                if (doc.isObject()) {
+                    const auto token = doc.object().value("access_token").toString();
+                    if (!token.isEmpty()) {
+                        common->set_access_token(token);
+                    }
+                }
+            }
             if (cb) cb(resp, status);
         });
 }

@@ -46,28 +46,40 @@ void AuthController::login(const QString& email, const QString& password)
         [this, email](const QByteArray& response, int status_code) {
             set_loading(false);
 
+            const QJsonDocument doc = QJsonDocument::fromJson(response);
+
             if (status_code != 200) {
-                // TODO: error_code 파싱 (response JSON의 error.code)
-                set_error("INVALID_CREDENTIALS");
+                QString code = "INVALID_CREDENTIALS";
+                if (status_code == 0) {
+                    code = "NETWORK_ERROR";
+                } else if (doc.isObject() && doc.object().contains("error")) {
+                    code = doc.object().value("error").toObject().value("code").toString(code);
+                }
+                set_error(code);
                 emit login_failed(last_error_);
+                qWarning() << "[AuthController] 로그인 실패 status=" << status_code << "code=" << code;
                 return;
             }
 
-            // TODO: JSON 파싱 → access_token, user 정보 추출
-            // QJsonDocument doc = QJsonDocument::fromJson(response);
-            // QString token = doc["access_token"].toString();
-            // api_client_->set_access_token(token);
-            // current_user_email_ = doc["user"]["email"].toString();
-            // ...
-
-            current_user_email_ = email;   // 임시
+            // 응답 파싱 — access_token 은 AuthApiClient 가 이미 common 에 set 함
+            if (doc.isObject()) {
+                const auto user = doc.object().value("user").toObject();
+                current_user_id_    = user.value("user_id").toString();
+                current_user_email_ = user.value("email").toString(email);
+                current_user_name_  = user.value("user_name").toString();
+            } else {
+                current_user_email_ = email;
+            }
             is_authenticated_ = true;
 
+            emit current_user_id_changed();
             emit current_user_email_changed();
+            emit current_user_name_changed();
             emit is_authenticated_changed();
             emit login_succeeded();
 
-            qInfo() << "[AuthController] 로그인 성공:" << email;
+            qInfo() << "[AuthController] 로그인 성공:" << current_user_email_
+                    << "user_id=" << current_user_id_;
         });
 }
 
