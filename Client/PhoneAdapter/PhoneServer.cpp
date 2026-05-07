@@ -107,7 +107,7 @@ QHttpServerResponse PhoneServer::handle_media_image(const QHttpServerRequest& re
     // TODO (영역 C 분담):
     //   1. multipart/form-data 또는 JSON+base64 파싱
     //   2. (선택) WorkerPool::instance().submit(...) 으로 디코딩·검증 위임
-    //   3. api_client_->upload_image(image_data, mime_type, callback) 호출
+    //   3. api_client_->media().upload_image(image_data, mime_type, intent_hint, callback) 호출
     //   4. 즉시 202 Accepted 응답 (request_id 포함)
     //
     // 참고:
@@ -139,7 +139,7 @@ QHttpServerResponse PhoneServer::handle_speech_utterance(const QHttpServerReques
 {
     // TODO (영역 C 분담):
     //   1. JSON 파싱 → text, stt_confidence, context, image_request_id 추출
-    //   2. api_client_->send_utterance(...) 호출
+    //   2. api_client_->speech().send_utterance(...) 호출
     //   3. MainServer 응답을 그대로 폰에 반환
     //
     // 참고:

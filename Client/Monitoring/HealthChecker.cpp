@@ -43,7 +43,7 @@ void HealthChecker::check_now()
 
     // TODO (영역 C 분담):
     //   1. QElapsedTimer 시작
-    //   2. api_client_->check_health(callback) 호출
+    //   2. api_client_->monitoring().check_health(callback) 호출
     //   3. 콜백에서 status_code 확인 (200 = ok, 503 = degraded, 0 = 네트워크 실패)
     //   4. 응답 시간 계산 → emit checked()
     //   5. 상태 전이(reachable ↔ unreachable) 감지 → 해당 시그널 emit
@@ -52,7 +52,8 @@ void HealthChecker::check_now()
 
     qInfo() << "[HealthChecker] /health 폴링 — TODO 구현";
 
-    api_client_->check_health(
+    // 패턴 B 적용 후 호출 경로: api_client_->monitoring().check_health(...)
+    api_client_->monitoring().check_health(
         [this](const QByteArray& response, int status_code) {
             const bool was_reachable = last_reachable_;
             last_reachable_ = (status_code == 200);
