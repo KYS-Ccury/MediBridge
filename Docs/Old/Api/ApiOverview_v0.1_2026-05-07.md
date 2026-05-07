@@ -3,30 +3,25 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | API 명세서 인덱스 + 공통 규칙 |
-| **버전** | v0.2 |
-| **개정일** | 2026-05-07 |
-| **이전 버전** | v0.1 (2026-05-06) → `Docs/Old/Api/ApiOverview_v0.1_2026-05-07.md` |
+| **버전** | v0.1 |
+| **작성일** | 2026-05-06 |
+| **작성자** | 팀 (3인) |
 
-> 본 폴더(`Docs/Api/`)는 메디브릿지 클라이언트 ↔ 메인 서버 ↔ 추론 서버 간의 **REST API 변경 불가 계약**을 정의한다.
->
-> ⭐ **v0.2 변경 핵심** (목업 「메디브릿지 목업.pptx」 반영):
-> - **PillApi 확장** — `IdentifyResponse` 에 `efficacy_text`/`usage_text` 추가, `PoolItem` 에 `user_category` 추가
-> - **PillApi 신규 엔드포인트** — `POST /v1/pill/identify/narrow` (단계별 좁히기, 음성·이미지로 식별 어려울 때 fallback)
-> - DB ERD v3 의 `pill_identification.classification_no/name` + `user_medication_pool.user_category` 컬럼과 매핑
+> 본 폴더(`Docs/Api/`)는 메디브릿지 클라이언트 ↔ 메인 서버 ↔ 추론 서버 간의 **REST API 변경 불가 계약**을 정의한다. 영역별 분담 작업의 1차 인터페이스 합의 문서.
 
 ---
 
 ## 1. API 명세서 목록
 
-| 파일 | 모듈 | 엔드포인트 | 본 버전 |
-| --- | --- | --- | --- |
-| [AuthApi.md](AuthApi.md) | 모듈 6 (인증) | `POST /v1/auth/signup`, `/v1/auth/login`, `/v1/auth/logout` | v0.1 |
-| [HistoryApi.md](HistoryApi.md) | 모듈 2 (복약 이력) | `POST /v1/history/record`, `GET /v1/history/list` | v0.1 |
-| [ReportApi.md](ReportApi.md) | 모듈 5 (통합 보고서) | `GET /v1/report/generate` | v0.1 |
-| [MediaApi.md](MediaApi.md) | 미디어 송수신 | `POST /v1/media/image` | v0.1 |
-| [SpeechApi.md](SpeechApi.md) | 음성 텍스트 (폰 STT) | `POST /v1/speech/utterance` | v0.1 |
-| [PillApi.md](PillApi.md) | 모듈 1 (식별·DUR + 약 풀 + 단계별 좁히기) | `POST /v1/pill/identify`, `/v1/pill/identify/narrow` ⭐, `/v1/pill/pool/*` | **v0.2** |
-| [MonitoringApi.md](MonitoringApi.md) | 자원 모니터링 (전 영역) | `GET /health`, `GET /metrics` | v0.1 |
+| 파일 | 모듈 | 엔드포인트 |
+| --- | --- | --- |
+| [AuthApi.md](AuthApi.md) | 모듈 6 (인증) | `POST /v1/auth/signup`, `/v1/auth/login`, `/v1/auth/logout` |
+| [HistoryApi.md](HistoryApi.md) | 모듈 2 (복약 이력) | `POST /v1/history/record`, `GET /v1/history/list` |
+| [ReportApi.md](ReportApi.md) | 모듈 5 (통합 보고서) | `GET /v1/report/generate` |
+| [MediaApi.md](MediaApi.md) | 미디어 송수신 | `POST /v1/media/image` |
+| [SpeechApi.md](SpeechApi.md) | 음성 텍스트 (폰 STT) | `POST /v1/speech/utterance` |
+| [PillApi.md](PillApi.md) | 모듈 1 (식별·DUR + 약 풀) | `POST /v1/pill/identify`, `/v1/pill/pool/*` |
+| [MonitoringApi.md](MonitoringApi.md) | 자원 모니터링 (전 영역) | `GET /health`, `GET /metrics` |
 
 ---
 
@@ -38,8 +33,7 @@
 | MainServer | Ubuntu 24.04 | LAN 고정 IP | 8001 | `http://<MAIN_IP>:8001/v1` |
 | InferenceServer | Ubuntu 24.04 (GPU) | LAN 고정 IP | 8002 | `http://<INF_IP>:8002/v1` |
 
-> **버전 prefix `/v1/`**: 향후 호환성 깨지는 변경 시 `/v2/` 로 분기.
-> `/v1/` 안에서의 v0.x 변경은 **호환 변경**(필드 추가만, 기존 필드 삭제·타입 변경 X) 으로 제한.
+> **버전 prefix `/v1/`**: 향후 호환성 깨지는 변경 시 `/v2/` 로 분기. MVP는 `/v1/` 고정.
 
 ---
 
@@ -50,30 +44,44 @@
 | 헤더 | 필수 | 설명 |
 | --- | --- | --- |
 | `Content-Type` | ✓ | `application/json` (기본) / `multipart/form-data` (파일 업로드) |
-| `Authorization` | 인증 필요 시 ✓ | `Bearer <JWT>` |
-| `X-Request-ID` | 권장 | 클라가 발급하는 요청 추적 ID (UUID 등) |
+| `Authorization` | 인증 필요 시 ✓ | `Bearer <JWT>` — 로그인 후 발급된 토큰 |
+| `X-Request-ID` | 권장 | 클라가 발급하는 요청 추적 ID (디버깅용 UUID 등) |
 
 ### 3.2 응답 헤더
 
 | 헤더 | 설명 |
 | --- | --- |
 | `Content-Type` | `application/json` (기본) / `application/pdf` (보고서) |
-| `X-Request-ID` | 요청 헤더 값 그대로 echo (없으면 서버 생성) |
+| `X-Request-ID` | 요청 헤더에 있던 값을 그대로 echo (없으면 서버가 생성) |
 
 ---
 
 ## 4. 표준 응답 형식
 
 ### 4.1 성공 응답
-엔드포인트별 데이터를 그대로 JSON 으로 반환. envelope X.
+
+엔드포인트별 데이터를 그대로 JSON으로 반환. 별도 envelope 사용하지 않음.
+
+```json
+{
+  "user_id": "u_abc123",
+  "created_at": "2026-05-06T10:30:00Z"
+}
+```
 
 ### 4.2 에러 응답 (공통 envelope)
+
+모든 4xx·5xx 응답은 다음 형식으로 통일:
+
 ```json
 {
   "error": {
     "code": "INVALID_EMAIL",
     "message": "이메일 형식이 올바르지 않습니다",
-    "details": { "field": "email", "value": "invalid@@example" }
+    "details": {
+      "field": "email",
+      "value": "invalid@@example"
+    }
   }
 }
 ```
@@ -108,22 +116,24 @@
 
 ### 6.1 토큰 발급
 - `POST /v1/auth/login` 성공 시 응답에 `access_token` 포함
-- 토큰 형식: JWT (HS256, MainServer Config 시크릿)
-- 만료: 기본 24시간
+- 토큰 형식: JWT (HS256 또는 RS256, MainServer Config로 결정)
+- 만료: 기본 24시간 (Config로 조정 가능)
 
 ### 6.2 토큰 사용
-모든 보호 엔드포인트는 다음 헤더 필수:
+모든 보호 엔드포인트(인증 필요 ✓)는 다음 헤더 필수:
 ```
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp...
 ```
 
 ### 6.3 토큰 무효화
-- `POST /v1/auth/logout` 호출 시 서버가 토큰을 블랙리스트 등록 (또는 짧은 만료)
+- `POST /v1/auth/logout` 호출 시 서버가 토큰을 블랙리스트에 등록 (또는 짧은 만료)
 - 만료 시 401 반환 → 클라는 재로그인 유도
 
 ---
 
 ## 7. 페이지네이션 (목록 조회)
+
+`GET /v1/history/list` 같은 목록 API는 다음 쿼리 파라미터 지원:
 
 | 파라미터 | 타입 | 기본값 | 설명 |
 | --- | --- | --- | --- |
@@ -147,7 +157,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp...
 
 ## 8. 표현 톤 정책 (필수 준수)
 
-[요구사항 분석서 v2 §3.3](../요구사항_분석서_ver2.md) 의 표현 톤 정책을 모든 API 응답 메시지에 적용:
+[요구사항 분석서 v2 §3.3](../요구사항_분석서_ver2.md) 의 표현 톤 정책을 모든 API 응답 메시지(`error.message`, 식별 결과 메시지 등)에 적용:
 
 - ❌ "복용 가능합니다" / "복용 불가합니다" 등 단정 표현 금지
 - ✅ "추정" + "약사·의사 상담 권유" 톤
@@ -166,8 +176,10 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp...
 | `/v1/report/*` | `ReportSchema.h/.cpp` | `ReportRequest/Response` |
 | `/v1/media/*` | `MediaSchema.h/.cpp` | `ImageUploadResponse` |
 | `/v1/speech/*` | `SpeechSchema.h/.cpp` | `UtteranceRequest/Response` |
-| `/v1/pill/*` | `PillSchema.h/.cpp` | `IdentifyRequest/Response`, `PillCandidate`, `PoolItem`, **`NarrowDownRequest/Response`** ⭐ |
+| `/v1/pill/*` | `PillSchema.h/.cpp` | `IdentifyRequest/Response`, `PillPoolItem` 등 |
 | `/health`, `/metrics` | `HealthSchema.h/.cpp` | `HealthResponse`, `MetricsResponse` |
+
+→ 명세 변경 시 Schemas/ 도 같이 갱신. PR 시 함께 리뷰.
 
 ---
 
@@ -175,5 +187,4 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp...
 
 | 버전 | 일자 | 작성자 | 변경 사항 |
 | --- | --- | --- | --- |
-| v0.1 | 2026-05-06 | 팀 (3인) | 초안 — 호스트·포트, 공통 헤더, 표준 응답·에러, 상태 코드, JWT, 페이지네이션, 표현 톤, Schemas 매핑 |
-| v0.2 | 2026-05-07 | 팀 (3인) | 목업 분석 반영 — PillApi 확장(`efficacy_text`/`usage_text`/`user_category` 추가), 신규 `POST /v1/pill/identify/narrow` (단계별 좁히기), DB ERD v3 매핑. 다른 명세는 변경 없음 (호환 변경) |
+| v0.1 | 2026-05-06 | 팀 (3인) | 초안 작성 — 호스트·포트, 공통 헤더, 표준 응답·에러, 상태 코드, JWT 인증, 페이지네이션, 표현 톤, Schemas 매핑 규칙 정리 |
