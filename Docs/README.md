@@ -115,6 +115,16 @@ Docs/
 
 ## 5. 빠른 참조
 
+### 5.0 메인 서버 시연 환경 띄우기 (TestMode)
+
+PC 부팅 후 두 명령:
+- **WSL/Ubuntu**: `bash MainServer/Scripts/medibridge-up.sh`
+- **Windows 관리자 PS** (WSL 노출 시): `MainServer\Scripts\medibridge-portproxy.ps1`
+- 확인: `http://10.10.10.97:8001/health`
+- 시드 계정: `test@medibridge.local` / `test1234`
+
+상세는 [MainServer/README.md "빠른 시작"](../MainServer/README.md) / [Install/MainServerInstall.md](Install/MainServerInstall.md) / [TestMode.md](TestMode.md).
+
 ### 5.1 약 식별 흐름 한눈에
 - 사전 등록 (음성·직접 입력) → 식별 범위 5,000종 → N종 축소
 - Stage 0.5 (음성 의도 분류) → Stage 1 (검출·OCR·매칭) → Stage 2 (DUR 위험 검출)
