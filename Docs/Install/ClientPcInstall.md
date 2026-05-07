@@ -5,7 +5,7 @@
 | **문서 종류** | 클라이언트 GUI PC 설치 매뉴얼 |
 | **대상 OS** | Windows 10 / 11 (64-bit) |
 | **역할** | Qt6 + C++ + QML 기반 GUI, 안드로이드 폰 입력 수신, 운용 서버 통신 |
-| **버전** | v1.1 |
+| **버전** | v1.2 |
 | **작성일** | 2026-05-06 |
 | **작성자** | 팀 (3인) |
 
@@ -294,7 +294,55 @@ scrcpy --audio-source=mic
 
 ---
 
-## 8. 설치 완료 체크리스트
+## 8. Qt Creator 첫 빌드·실행
+
+### 8.1 프로젝트 열기
+
+1. Qt Creator 실행
+2. **File → Open File or Project...** (또는 Ctrl+O)
+3. `C:\Users\LMS\Desktop\Project\MediBridge\Client\CMakeLists.txt` 선택 → "Open"
+
+### 8.2 Configure Project
+
+자동으로 뜨는 Configure 화면에서:
+- **Desktop Qt 6.11.0 MinGW 64-bit** 만 체크 (MSVC2022·Python 키트 해제)
+- 우측 하단 **"Configure Project"** 클릭
+- 빌드 디렉토리 자동 생성: `Client/build/Desktop_Qt_6_11_0_MinGW_64_bit-Debug/`
+
+### 8.3 빌드 + 실행
+
+| 동작 | 단축키 | 아이콘 |
+| --- | --- | --- |
+| 빌드만 | **Ctrl+B** | 좌측 하단 망치 🔨 |
+| 빌드 + 실행 | **Ctrl+R** | 좌측 하단 초록 ▶ |
+
+성공 시 콘솔에 `[Main] MediBridge Client 시작됨` + GUI 윈도우 표시.
+
+### 8.4 빌드 에러 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+| --- | --- |
+| `Unknown module(s) in QT: HttpServer` | Qt Maintenance Tool 으로 **Qt HTTP Server** 모듈 추가 설치 |
+| `Cannot find -lQt6QuickControls2` | **Qt Quick Controls 2** 모듈 추가 설치 |
+| `qrc:/Frontend/Main.qml: No such file` | Build → Clean & Rebuild |
+| `'gmtime_s' was not declared` | `<time.h>` 추가 또는 Clean Rebuild (MinGW 헤더 캐시 문제) |
+| 콘솔 창 안 뜸 | CMakeLists.txt 의 `WIN32_EXECUTABLE FALSE` 확인 |
+| 폰 연결됐는데 LED 빨강 | `adb devices` 가 PATH 에 등록됐는지 확인 (6장 PATH 등록 절차) |
+
+### 8.5 빌드 산출물
+
+| 항목 | 경로 |
+| --- | --- |
+| 실행 파일 | `Client/build/Desktop_Qt_6_11_0_MinGW_64_bit-Debug/MediBridgeClient.exe` |
+| Qt 런타임 DLL | 같은 폴더 (자동 복사) |
+| 빌드 로그 | Qt Creator "Compile Output" |
+| 실행 로그 | Qt Creator "Application Output" + 별도 콘솔 창 |
+
+`build/` 는 `.gitignore` 처리됨.
+
+---
+
+## 9. 설치 완료 체크리스트
 
 다음 항목이 모두 ✅ 면 클라 PC 셋업 완료.
 
@@ -326,9 +374,10 @@ scrcpy --audio-source=mic
 
 ---
 
-## 9. 변경 이력
+## 10. 변경 이력
 
 | 버전 | 일자 | 작성자 | 변경 사항 |
 | --- | --- | --- | --- |
 | v1.0 | 2026-05-06 | 팀 (3인) | 초안 작성. Qt 6 SDK + ADB Platform-Tools + scrcpy + PATH 등록 + 폰 무선 연결 절차 정리 |
 | v1.1 | 2026-05-06 | 팀 (3인) | 7장 채널 분기 추가 — **7.A USB 직결(권장, MVP 기본 채널) ↔ 7.B 무선 디버깅(같은 네트워크 시)**. **`adb reverse tcp:8000 tcp:8000`** 포트 포워딩 절차 추가. 7.B 트러블슈팅에 `protocol fault` 케이스 안내. 체크리스트의 폰 연결 항목을 USB 직결 기반으로 갱신. (PC 사내망 vs 폰 외부망 환경에서 무선 페어링 실패 케이스 → USB 단일화 결정 반영) |
+| v1.2 | 2026-05-07 | 팀 (3인) | **8장 Qt Creator 첫 빌드·실행 절차 신규** — 프로젝트 열기 / Configure / 빌드(Ctrl+B) / 실행(Ctrl+R) / 빌드 에러 트러블슈팅 5종 / 빌드 산출물 위치 정리. 기존 9·10장 번호 한 칸씩 밀림. |
