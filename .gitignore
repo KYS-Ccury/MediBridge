@@ -9,9 +9,17 @@
 # Qt / C++ 빌드 산출물 (Client, MainServer 공통)
 # ─────────────────────────────────────────────
 build/                       # CMake 빌드 디렉토리 (관례)
-build-*/                     # Qt Creator가 만드는 빌드 디렉토리 (예: build-Poc-Desktop_Qt_6_11_0_MinGW_64_bit-Debug)
+**/build/                    # 하위 디렉토리의 build/ 도 모두
+build-*/                     # Qt Creator 다른 빌드 디렉토리 (예: build-Poc-...)
+**/build-*/
 cmake-build-*/               # CLion 빌드 디렉토리
+**/cmake-build-*/
 out/                         # Visual Studio 빌드 디렉토리
+
+# Qt Creator 사용자별 설정 (빌드 디렉토리·세션·키트 정보 — 개인 환경)
+.qtcreator/
+**/.qtcreator/
+*.user.lock
 
 # CMake 산출물
 CMakeCache.txt               # CMake 캐시 (빌드마다 재생성)
