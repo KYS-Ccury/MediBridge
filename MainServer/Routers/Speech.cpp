@@ -4,12 +4,12 @@
 #include "Speech.h"
 #include "../Schemas/SpeechSchema.h"
 #include "../Config.h"
-#include "../Services/TestMode/MockAuth.h"
+#include "../Services/Auth/JwtIssuer.h"
 
 #include <drogon/HttpResponse.h>
 
 using medibridge::Config;
-namespace TestMode = medibridge::testmode;
+namespace AuthSvc = medibridge::services::auth;
 
 namespace medibridge::routers {
 
@@ -67,7 +67,7 @@ void Speech::handle_utterance(const drogon::HttpRequestPtr& req,
                               std::function<void(const drogon::HttpResponsePtr&)>&& callback)
 {
     auto h = req->getHeader("Authorization");
-    if (!TestMode::extract_user_id_from_bearer(h).has_value()) {
+    if (!AuthSvc::JwtIssuer::extract_user_id_from_header(h).has_value()) {
         callback(error_response(drogon::k401Unauthorized, "INVALID_TOKEN", "인증 실패."));
         return;
     }

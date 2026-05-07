@@ -8,7 +8,7 @@
 #include "../Schemas/MediaSchema.h"
 #include "../Database/Connection.h"
 #include "../Config.h"
-#include "../Services/TestMode/MockAuth.h"
+#include "../Services/Auth/JwtIssuer.h"
 #include "../Utils/TimeUtil.h"
 
 #include <drogon/HttpResponse.h>
@@ -22,7 +22,7 @@
 
 using medibridge::database::Connection;
 using medibridge::Config;
-namespace TestMode = medibridge::testmode;
+namespace AuthSvc = medibridge::services::auth;
 namespace orm = drogon::orm;
 
 namespace medibridge::routers {
@@ -52,7 +52,7 @@ void Media::handle_image_upload(const drogon::HttpRequestPtr& req,
                                 std::function<void(const drogon::HttpResponsePtr&)>&& callback)
 {
     auto h = req->getHeader("Authorization");
-    auto user_id_opt = TestMode::extract_user_id_from_bearer(h);
+    auto user_id_opt = AuthSvc::JwtIssuer::extract_user_id_from_header(h);
     if (!user_id_opt) {
         callback(error_response(drogon::k401Unauthorized, "INVALID_TOKEN", "인증 실패."));
         return;

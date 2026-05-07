@@ -65,8 +65,8 @@ set(SOURCES
     Services/Report/ReportBuilder.cpp
     Services/Report/ReportHtmlRenderer.cpp
     Services/Report/ReportPdfRenderer.cpp
-    # TestMode helpers
-    Services/TestMode/MockAuth.cpp
+    # TestMode helpers — 현재 미사용 (실 JwtIssuer 로 교체됨, 참고용 보존)
+    # Services/TestMode/MockAuth.cpp
     Database/Connection.cpp
     Threading/WorkerPool.cpp
     Monitoring/ResourceMonitor.cpp
@@ -108,7 +108,7 @@ set(HEADERS
     Services/Report/ReportBuilder.h
     Services/Report/ReportHtmlRenderer.h
     Services/Report/ReportPdfRenderer.h
-    Services/TestMode/MockAuth.h
+    # Services/TestMode/MockAuth.h     # 현재 미사용
     Database/Models.h
     Database/Connection.h
     Threading/WorkerPool.h

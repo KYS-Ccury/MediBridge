@@ -8,7 +8,7 @@
 #include "../Schemas/PillSchema.h"
 #include "../Database/Connection.h"
 #include "../Config.h"
-#include "../Services/TestMode/MockAuth.h"
+#include "../Services/Auth/JwtIssuer.h"
 #include "../Utils/TimeUtil.h"
 
 #include <drogon/HttpResponse.h>
@@ -25,7 +25,7 @@
 
 using medibridge::database::Connection;
 using medibridge::Config;
-namespace TestMode = medibridge::testmode;
+namespace AuthSvc = medibridge::services::auth;
 namespace orm = drogon::orm;
 
 namespace medibridge::routers {
@@ -58,17 +58,12 @@ static drogon::HttpResponsePtr error_response(drogon::HttpStatusCode code,
     return json_response(code, body);
 }
 
-/// Authorization 헤더에서 user_id 추출 (TestMode: mock JWT, Production: 실 JWT — TODO)
+/// Authorization 헤더에서 user_id 추출 (HS256 JWT 검증)
 static std::optional<std::string> auth_user_id(const drogon::HttpRequestPtr& req)
 {
     auto h = req->getHeader("Authorization");
     if (h.empty()) return std::nullopt;
-
-    if (Config::instance().test_mode()) {
-        return TestMode::extract_user_id_from_bearer(h);
-    }
-    // TODO: Services/Auth/JwtIssuer 로 검증 (영역 B 분담)
-    return TestMode::extract_user_id_from_bearer(h);
+    return AuthSvc::JwtIssuer::extract_user_id_from_header(h);
 }
 
 /// user_id → anonymous_id (활성 매핑)
