@@ -35,6 +35,7 @@
 // PhoneLink - USB 유선 연동 자동화
 #include "PhoneLink/AdbDeviceMonitor.h"
 #include "PhoneLink/AdbReverseManager.h"
+#include "PhoneLink/PhoneCaptureService.h"
 
 // =====================================================
 // 상수
@@ -83,12 +84,13 @@ int main(int argc, char *argv[])
     // 7. PhoneLink — USB 유선 연동 자동화 (Q4=C: 자동+수동)
     medibridge::phonelink::AdbDeviceMonitor adb_monitor(ADB_DEVICE_POLL_INTERVAL_MS);
     medibridge::phonelink::AdbReverseManager adb_reverse(PHONE_ADAPTER_PORT);
+    medibridge::phonelink::PhoneCaptureService phone_capture_service;   // PC 트리거 화면 캡쳐
     adb_monitor.start();
 
     // 8. Controller (ViewModel) 인스턴스 생성
     medibridge::controllers::AppController        app_controller;
     medibridge::controllers::AuthController       auth_controller(&api_client);
-    medibridge::controllers::PillController       pill_controller(&api_client);
+    medibridge::controllers::PillController       pill_controller(&api_client, &phone_capture_service);
     medibridge::controllers::HistoryController    history_controller(&api_client);
     medibridge::controllers::ReportController     report_controller(&api_client);
     medibridge::controllers::PhoneLinkController  phone_link_controller(&adb_monitor, &adb_reverse);

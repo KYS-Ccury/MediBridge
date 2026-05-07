@@ -1,15 +1,19 @@
 // =====================================================
 // PillController — 알약 식별 + DUR + 약 풀 관리 (ViewModel)
 // =====================================================
-// 폰에서 받은 사진은 PhoneServer가 직접 처리하고,
-// 본 컨트롤러는 식별 결과 표시·약 풀 CRUD UI를 담당.
+// 두 가지 식별 흐름 지원:
+//   1. PC 트리거 캡쳐 — capture_and_identify()
+//      adb screencap → 메모리 PNG → 메인서버 업로드 → 결과 표시
+//   2. 폰 PWA 흐름 — PhoneServer 가 받은 사진을 자동 처리 (TODO)
 // =====================================================
 #pragma once
 
 #include <QObject>
 #include <QString>
+#include <QByteArray>
 
 namespace medibridge::network { class ApiClient; }
+namespace medibridge::phonelink { class PhoneCaptureService; }
 
 namespace medibridge::controllers {
 
@@ -26,7 +30,13 @@ class PillController : public QObject
     Q_PROPERTY(QString last_request_id READ last_request_id NOTIFY last_request_id_changed)
 
 public:
-    explicit PillController(network::ApiClient* api_client, QObject* parent = nullptr);
+    /**
+     * @param api_client            메인서버 호출 클라이언트 (외부 소유)
+     * @param phone_capture_service PC 트리거 화면 캡쳐 (외부 소유, nullptr 가능)
+     */
+    explicit PillController(network::ApiClient* api_client,
+                            phonelink::PhoneCaptureService* phone_capture_service,
+                            QObject* parent = nullptr);
 
     // 접근자
     bool is_loading() const;
@@ -37,6 +47,9 @@ public:
     QString last_request_id() const;
 
     // QML 호출
+    /// ⭐ PC 에서 폰 화면 캡쳐 → 메인서버 업로드 → 식별 결과 자동 표시
+    Q_INVOKABLE void capture_and_identify();
+
     Q_INVOKABLE void identify(const QString& image_request_id,
                               const QString& utterance_request_id);
     Q_INVOKABLE void load_pool(bool include_inactive);
@@ -56,13 +69,22 @@ signals:
     void identify_failed(const QString& error_code);
     void pool_loaded();
     void pool_load_failed(const QString& error_code);
-    void pool_changed();      // 약 풀 변경 (추가/삭제/리셋) 시 발신
+    void pool_changed();
+
+private slots:
+    /// PhoneCaptureService::capture_succeeded 수신
+    void on_capture_succeeded(const QByteArray& png_data);
+    /// PhoneCaptureService::capture_failed 수신
+    void on_capture_failed(const QString& error_message);
 
 private:
     void set_loading(bool loading);
     void set_error(const QString& error_code);
+    /// 메인서버 업로드 응답 파싱·결과 채움 (공통)
+    void handle_identify_response(const QByteArray& response, int status_code);
 
     network::ApiClient* api_client_;
+    phonelink::PhoneCaptureService* phone_capture_service_;
     bool is_loading_ = false;
     QString last_error_;
     QString confidence_tier_;

@@ -53,6 +53,7 @@ set(SOURCES
     # PhoneLink - USB 유선 연동 자동화
     PhoneLink/AdbDeviceMonitor.cpp
     PhoneLink/AdbReverseManager.cpp
+    PhoneLink/PhoneCaptureService.cpp
 
     # PhoneAdapter (폰 PWA 수신)
     PhoneAdapter/PhoneServer.cpp
@@ -92,6 +93,7 @@ set(HEADERS
 
     PhoneLink/AdbDeviceMonitor.h
     PhoneLink/AdbReverseManager.h
+    PhoneLink/PhoneCaptureService.h
 
     PhoneAdapter/PhoneServer.h
 

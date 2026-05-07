@@ -1,8 +1,9 @@
 // =====================================================
-// HomePage — 메인 화면 (식별·약 풀·복약 이력·보고서 진입)
+// HomePage — 메인 화면 (촬영·약 풀·복약 이력·보고서 진입)
 // =====================================================
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "../Components"
 
@@ -22,7 +23,7 @@ Page {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 24
-        spacing: 24
+        spacing: 16
 
         Label {
             text: qsTr("환영합니다, ") +
@@ -34,13 +35,14 @@ Page {
         }
 
         Label {
-            text: qsTr("폰으로 알약을 촬영하고 음성으로 질문하세요.")
-            font.pixelSize: 16
+            text: qsTr("폰 카메라로 알약을 비춘 상태에서 아래 '촬영' 버튼을 누르세요.")
+            font.pixelSize: 14
+            wrapMode: Text.WordWrap
             Layout.alignment: Qt.AlignHCenter
             color: "#616161"
         }
 
-        // 폰 사용 안내 (USB 연결 미완료 시)
+        // ----- 폰 미연결 안내 -----
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 60
@@ -57,35 +59,59 @@ Page {
             }
         }
 
-        // 메뉴 버튼들
+        // ----- ⭐ 촬영 버튼 (가장 큰 액션) -----
+        AppButton {
+            text: pill_controller.is_loading
+                  ? qsTr("⏳ 처리 중...")
+                  : qsTr("📸 촬영 + 식별")
+            Layout.fillWidth: true
+            Layout.preferredHeight: 88
+            font.pixelSize: 26
+            enabled: phone_link_controller.is_connected && !pill_controller.is_loading
+            onClicked: pill_controller.capture_and_identify()
+        }
+
+        Label {
+            Layout.fillWidth: true
+            text: qsTr("폰 화면을 캡쳐하여 식별합니다 (사진은 폰 갤러리에 저장되지 않음).")
+            font.pixelSize: 12
+            color: "#9E9E9E"
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        // ----- 메뉴 그리드 -----
         GridLayout {
             Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 16
             columns: 2
             columnSpacing: 16
             rowSpacing: 16
 
             AppButton {
                 text: qsTr("약 풀 관리")
-                Layout.preferredWidth: 280
+                variant: "secondary"
+                Layout.preferredWidth: 240
                 onClicked: stack.push("PillPoolPage.qml")
             }
 
             AppButton {
                 text: qsTr("복약 이력")
-                Layout.preferredWidth: 280
+                variant: "secondary"
+                Layout.preferredWidth: 240
                 onClicked: stack.push("HistoryPage.qml")
             }
 
             AppButton {
                 text: qsTr("통합 보고서")
-                Layout.preferredWidth: 280
+                variant: "secondary"
+                Layout.preferredWidth: 240
                 onClicked: stack.push("ReportPage.qml")
             }
 
             AppButton {
                 text: qsTr("최근 식별 결과")
                 variant: "secondary"
-                Layout.preferredWidth: 280
+                Layout.preferredWidth: 240
                 enabled: pill_controller.last_request_id.length > 0
                 onClicked: stack.push("IdentifyResultPage.qml")
             }
