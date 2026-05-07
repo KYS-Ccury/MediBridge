@@ -2,6 +2,7 @@
 
 #include <QLoggingCategory>
 #include <QStringList>
+#include <QRegularExpression>
 
 namespace medibridge::phonelink {
 

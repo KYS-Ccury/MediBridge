@@ -328,6 +328,8 @@ scrcpy --audio-source=mic
 | `'gmtime_s' was not declared` | `<time.h>` 추가 또는 Clean Rebuild (MinGW 헤더 캐시 문제) |
 | 콘솔 창 안 뜸 | CMakeLists.txt 의 `WIN32_EXECUTABLE FALSE` 확인 |
 | 폰 연결됐는데 LED 빨강 | `adb devices` 가 PATH 에 등록됐는지 확인 (6장 PATH 등록 절차) |
+| `'QRegularExpression' is an incomplete type` | Qt 6 forward declaration 만 있고 본체 헤더 별도 — 사용 .cpp 에 `#include <QRegularExpression>` 추가. (`qstringfwd.h` 만으로는 부족) |
+| `'QUuid' is an incomplete type` 또는 다른 Qt 클래스 incomplete type | 해당 헤더 직접 include — Qt 6 는 transitive include 가 줄어들어 명시 필요 |
 
 ### 8.5 빌드 산출물
 
