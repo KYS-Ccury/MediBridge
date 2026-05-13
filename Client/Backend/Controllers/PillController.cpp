@@ -49,26 +49,22 @@ void PillController::set_error(const QString& error_code)
 // =====================================================
 void PillController::capture_and_identify()
 {
-    if (!phone_capture_service_) {
-        set_error("CAPTURE_SERVICE_UNAVAILABLE");
-        emit identify_failed(last_error_);
-        return;
-    }
     if (is_loading_) return;
 
-    set_loading(true);
+    // 💡 직접 capture_screen()을 호출하지 않고 "로딩 상태"만 켭니다.
+    // 그러면 스트리밍 중인 다음 프레임이 왔을 때 on_capture_succeeded에서 가로챕니다.
+    set_loading(true); 
     set_error("");
-    qInfo() << "[PillController] capture_and_identify — adb screencap 시작";
-
-    // 비동기 캡쳐 시작. 결과는 on_capture_succeeded / on_capture_failed 슬롯.
-    phone_capture_service_->capture_screen();
+    qInfo() << "[PillController] 촬영 요청 수락 — 다음 스트리밍 프레임을 대기합니다.";
 }
 
 void PillController::on_capture_succeeded(const QByteArray& png_data)
 {
-    qInfo() << "[PillController] 캡쳐 성공 — 메인서버 업로드 (" << png_data.size() << "bytes)";
+    // 💡 사용자가 촬영 버튼을 눌렀을 때(is_loading_ == true)만 서버로 업로드합니다.
+    if (!is_loading_) return; 
 
-    // 메인서버 업로드 (multipart) — image/png MIME
+    qInfo() << "[PillController] 스트리밍 프레임 캡처 성공 — 서버 업로드 시작";
+    
     api_client_->media().upload_image(png_data, "image/png", "identify",
         [this](const QByteArray& response, int status_code) {
             handle_identify_response(response, status_code);

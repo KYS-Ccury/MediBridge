@@ -32,6 +32,7 @@
 #include "ReportController.h"
 #include "PhoneLinkController.h"
 #include "VoiceController.h"
+#include "CameraStreamController.h"
 
 // PhoneLink - USB 유선 연동 자동화
 #include "AdbDeviceMonitor.h"
@@ -96,6 +97,7 @@ int main(int argc, char *argv[])
     medibridge::controllers::ReportController     report_controller(&api_client);
     medibridge::controllers::PhoneLinkController  phone_link_controller(&adb_monitor, &adb_reverse);
     medibridge::controllers::VoiceController voice_controller(&utterance_forwarder);
+    medibridge::controllers::CameraStreamController camera_stream_controller(&phone_capture_service);
 
     // 9. QML 엔진 + Controller 컨텍스트 등록
     QQmlApplicationEngine engine;
@@ -107,6 +109,7 @@ int main(int argc, char *argv[])
     root_context->setContextProperty("report_controller",     &report_controller);
     root_context->setContextProperty("phone_link_controller", &phone_link_controller);
     root_context->setContextProperty("voice_controller",      &voice_controller);
+    root_context->setContextProperty("camera_stream_controller", &camera_stream_controller);
 
     // 10. QML 엔진 종료 시 앱 종료
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,

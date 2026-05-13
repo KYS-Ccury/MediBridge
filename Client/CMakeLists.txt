@@ -31,6 +31,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Network                # QNetworkAccessManager
     HttpServer             # QHttpServer (PhoneAdapter)
     Concurrent             # QtConcurrent
+    Multimedia
 )
 
 set(SOURCES
@@ -43,7 +44,8 @@ set(SOURCES
     Backend/Controllers/HistoryController.cpp
     Backend/Controllers/ReportController.cpp
     Backend/Controllers/PhoneLinkController.cpp
-    Backend/Controllers/VoiceController.cpp    # <--- 신규 컨트롤러 추가됨
+    Backend/Controllers/VoiceController.cpp    
+    Backend/Controllers/CameraStreamController.cpp
 
     # Backend - Models (QAbstractListModel)
     Backend/Models/PillCandidateListModel.cpp
@@ -86,7 +88,9 @@ set(HEADERS
     Backend/Controllers/HistoryController.h
     Backend/Controllers/ReportController.h
     Backend/Controllers/PhoneLinkController.h
-    Backend/Controllers/VoiceController.h      # <--- 신규 컨트롤러 헤더 추가됨
+    Backend/Controllers/VoiceController.h     
+    Backend/Controllers/CameraStreamController.h
+    
 
     Backend/Models/PillCandidateListModel.h
     Backend/Models/HistoryListModel.h
@@ -138,6 +142,7 @@ target_link_libraries(MediBridgeClient PRIVATE
     Qt6::Network
     Qt6::HttpServer
     Qt6::Concurrent
+    Qt6::Multimedia
 )
 
 # 💡 하위 디렉토리 경로들을 Include 경로로 모두 추가
