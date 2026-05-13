@@ -124,3 +124,6 @@ Desktop.ini
 output/
 reports/*.pdf
 !reports/SAMPLE.pdf
+
+# Claude Code 환경 설정 (사용자 PC 로컬)
+.claude/

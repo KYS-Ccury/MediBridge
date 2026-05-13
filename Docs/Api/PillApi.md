@@ -54,9 +54,11 @@
 
 | 필드 | 필수 | 설명 |
 | --- | --- | --- |
-| `image_request_id` | ✓ | 직전 `POST /v1/media/image` 의 request_id |
+| `image_request_id` | ✓ | 직전 `POST /v1/media/intent` 의 request_id (v0.2 권장) 또는 `POST /v1/media/image` 의 request_id (레거시) |
 | `utterance_request_id` | – | 결합할 발화 request_id |
 | `include_dur_check` | – | 기본 `true`. `false` 시 식별 결과만 |
+
+> ⭐ **사진 흐름 (MediaApi v0.2)**: `request_id` 로 `photo_storage` SELECT → status=READY 필요. PENDING/EXPIRED 면 `409 PHOTO_NOT_READY`.
 
 ### 응답 (v0.2 확장)
 - **200 OK**
@@ -117,6 +119,9 @@
 | 상태 | 코드 | 의미 |
 | --- | --- | --- |
 | 400 | `INVALID_REQUEST_ID` | image_request_id 형식 오류 |
+| 404 | `PHOTO_NOT_FOUND` | image_request_id 에 대응하는 photo_storage row 없음 (운영 모드) |
+| 409 | `PHOTO_NOT_READY` | photo_storage status 가 READY 아님 (PENDING/EXPIRED) — `/v1/media/commit` 먼저 |
+| 502 | `VISION_UPSTREAM_ERROR` | Vision PC 추론 호출 실패 (운영 모드) |
 | 401 | `INVALID_TOKEN` / `EXPIRED_TOKEN` | 인증 실패 |
 | 404 | `IMAGE_NOT_FOUND` | request_id 에 해당하는 이미지 없음 |
 | 422 | `NO_PILL_DETECTED` | YOLO26 검출 실패 → `guidance.fallback_action: "RECAPTURE"` |
@@ -127,6 +132,50 @@
 - `MainServer/Schemas/PillSchema.h::IdentifyRequest/Response`
 - `MainServer/Schemas/PillSchema.h::PillCandidate` (v0.2: efficacy_text·usage_text·classification_name 필드 추가)
 - `MainServer/Schemas/PillSchema.h::DurCheckResult/DurDetail`
+- `MainServer/Services/Inference/VisionInferenceClient::RemoteDetectParams` (운영 모드 내부 호출)
+
+### ⭐ 운영 모드 내부 흐름 (v0.3)
+
+```
+클라 → 메인 /v1/pill/identify
+  ↓ photo_storage SELECT (request_id, status=READY 확인)
+  ↓ StorageTokenIssuer::issue (op=get, TTL 300s)
+  ↓ Vision PC POST /vision/detect_remote (아래 schema)
+       {photo_id, storage_url, get_token, mime, purpose}
+  ← Vision 응답
+       {candidates:[{item_code,drug_name,confidence,match_keys}], confidence_tier}
+  ↓ DurQueryEngine::check_combination (사용자 풀과 페어 매칭, 양방향, dedup)
+  → 클라 응답 (IdentifyResponse)
+```
+
+**메인 → Vision PC 호출 schema** (다른 팀원 측 FastAPI 작성 기준):
+
+```http
+POST http://10.10.10.128:8003/vision/detect_remote
+Content-Type: application/json
+
+{
+  "photo_id":    "ph_3f0a4e30bd6cd9e0a5f2ba4de68b1c4d",
+  "storage_url": "http://10.10.10.122:8004/storage/photos/anon_test_001/ph_3f0a4e30bd6cd9e0a5f2ba4de68b1c4d.jpg",
+  "get_token":   "<HS256 JWT, op=get, exp=now+300>",
+  "mime":        "image/jpeg",
+  "purpose":     "IDENTIFY"
+}
+```
+
+→ Vision PC 는 `get_token` 으로 보관 PC GET → YOLO·PaddleOCR·OpenCV 추론 후:
+
+```json
+{
+  "candidates": [
+    { "item_code": "...", "drug_name": "...", "confidence": 0.85,
+      "match_keys": ["engraving","shape","color"] }
+  ],
+  "confidence_tier": "HIGH"
+}
+```
+
+TestMode (`MEDIBRIDGE_TEST_MODE=true`) 에서는 Vision 호출 우회 — `pill_identification` 시드에서 3건 직접 SELECT.
 
 ---
 
@@ -569,3 +618,4 @@ soft delete: `is_active = FALSE`, `deactivated_at = NOW()`. (v0.1 명세 그대�
 | v0.1 | 2026-05-06 | 초안 — 식별·DUR + 약 풀 CRUD, soft delete, 전체 리셋 안전 가드 |
 | v0.2 | 2026-05-07 | 목업 분석 반영 — ① `PillCandidate` 에 `classification_name`·`efficacy_text`·`usage_text` 추가 (Slide 7) ② `PoolItem` 에 `user_category`·`classification_name` 추가 (Slide 6) ③ `guidance.fallback_action` enum 추가 (RECAPTURE/NARROW_DOWN/CHECK_ENGRAVING) ④ **신규 `POST /v1/pill/identify/narrow`** — 단계별 속성 좁히기 흐름 (Slide 3·9·12, stateless·LLM 미사용·Rule-based DB 조회) ⑤ DB ERD v3 매핑 |
 | v0.3 | 2026-05-07 | **신규 `POST /v1/pill/onboarding/normalize`** — 음성 등록 시 의료용어를 모르는 사용자를 위한 약명 정규화 RAG round-trip. ① stateless 다회 round-trip 허용 (`max_rounds=5` 기본, 토큰·rate_limit 한계 선언) ② 응답에 `tts_text` 필드 (클라 자체 TTS 우선 + 메인서버 TTS fallback 어댑터) ③ `state` 3분기 (NEED_DISAMBIGUATION / RESOLVED / NOT_FOUND) ④ 표현 톤 정책 준수 (e약은요 본문 인용, 단정 표현 X) ⑤ Schemas/ 매핑 추가 (`OnboardingNormalizeRequest/Response`, `OnboardingCandidate/Question/Confirmation`) |
+| **(v0.3 보강)** | **2026-05-13** | `/v1/pill/identify` 운영 모드 내부 흐름 명시 — MediaApi v0.2 의 `request_id` → photo_storage SELECT → GET 토큰 발급 → Vision PC `POST /vision/detect_remote` 호출 schema 확정. 신규 에러: `PHOTO_NOT_FOUND`(404) / `PHOTO_NOT_READY`(409) / `VISION_UPSTREAM_ERROR`(502). DUR 페어 매칭은 `DurQueryEngine` 모듈로 분리 (양방향 페어 + dedup, `prohibit_reason` 그대로 인용, action_message 정해진 템플릿). |

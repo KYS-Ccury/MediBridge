@@ -140,3 +140,4 @@
 | 버전 | 일자 | 작성자 | 변경 사항 |
 | --- | --- | --- | --- |
 | v0.1 | 2026-05-06 | 팀 (3인) | 스켈레톤 작성. NVIDIA·CUDA·Vision·FastAPI·LLM 설치 예정 항목 명시. Whisper는 확장 fallback으로 분리 |
+| **(2026-05-13 메모)** | | | 메인서버 측 인터페이스 확정 — Vision PC 는 `POST /vision/detect_remote` 받음 (페이로드: `{photo_id, storage_url, get_token, mime, purpose}`), 응답 `{candidates:[{item_code,drug_name,confidence,match_keys}], confidence_tier}`. 사진은 `get_token` 으로 데이터 보관 PC(`10.10.10.122:8004`) GET. 자세한 schema: [Api/PillApi.md](../Api/PillApi.md), [Api/MediaApi.md](../Api/MediaApi.md). |

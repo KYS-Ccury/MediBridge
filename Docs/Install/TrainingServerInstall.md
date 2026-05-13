@@ -140,3 +140,4 @@
 | 버전 | 일자 | 작성자 | 변경 사항 |
 | --- | --- | --- | --- |
 | v0.1 | 2026-05-06 | 팀 (3인) | 스켈레톤 작성. NVIDIA·PyTorch·Ultralytics·PaddleOCR·OpenSSH·데이터셋 설치 예정 항목 명시 |
+| **(2026-05-13 메모)** | | | 학습용 사진 일괄 PULL — 학습 PC 가 메인서버에 `POST /v1/media/get_token` 으로 토큰 받아 보관 PC(`10.10.10.122:8004`) 에서 GET. 현재 POC 단계는 학습+추론 동거 (별도 PC 없음). 상세: [Api/MediaApi.md](../Api/MediaApi.md). |

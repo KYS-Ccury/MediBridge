@@ -383,3 +383,4 @@ scrcpy --audio-source=mic
 | v1.0 | 2026-05-06 | 팀 (3인) | 초안 작성. Qt 6 SDK + ADB Platform-Tools + scrcpy + PATH 등록 + 폰 무선 연결 절차 정리 |
 | v1.1 | 2026-05-06 | 팀 (3인) | 7장 채널 분기 추가 — **7.A USB 직결(권장, MVP 기본 채널) ↔ 7.B 무선 디버깅(같은 네트워크 시)**. **`adb reverse tcp:8000 tcp:8000`** 포트 포워딩 절차 추가. 7.B 트러블슈팅에 `protocol fault` 케이스 안내. 체크리스트의 폰 연결 항목을 USB 직결 기반으로 갱신. (PC 사내망 vs 폰 외부망 환경에서 무선 페어링 실패 케이스 → USB 단일화 결정 반영) |
 | v1.2 | 2026-05-07 | 팀 (3인) | **8장 Qt Creator 첫 빌드·실행 절차 신규** — 프로젝트 열기 / Configure / 빌드(Ctrl+B) / 실행(Ctrl+R) / 빌드 에러 트러블슈팅 5종 / 빌드 산출물 위치 정리. 기존 9·10장 번호 한 칸씩 밀림. |
+| **(2026-05-13 메모)** | | | 메인서버 측 인터페이스 확정 — 사진 흐름은 `/v1/media/intent` → 보관 PC 직접 PUT → `/v1/media/commit` 3단계 (MediaApi v0.2). 클라 `Client/MainServerClient/MediaApiClient` 갱신 필요. 상세: [Api/MediaApi.md](../Api/MediaApi.md). 시스템 시작 명령은 [system_prompt.md](../system_prompt.md) 정본 참조. |

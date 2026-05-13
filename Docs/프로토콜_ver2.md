@@ -51,14 +51,28 @@
     - 응답: 의사 상담용 통합 보고서 PDF/HTML 반환
     - DB 매핑: `user_reports` 테이블 저장 및 통계 추출
 
-### 2.3 미디어 및 음성 텍스트 송수신
+### 2.3 미디어 및 음성 텍스트 송수신 — ⭐ v2.2 갱신 (사진 흐름 ⑤+⑥)
 
 > v1.0 대비 **음성 바이너리 송수신을 제거**했습니다. 음성은 폰 온디바이스 STT 처리 후 텍스트로 송신합니다.
+> v2.2 대비 **사진 흐름이 3단계로 분리됨** — 메인서버가 본체를 통과시키지 않고 토큰만 발급, 클라가 보관 PC 에 직접 PUT. (정본: [Api/MediaApi v0.2](Api/MediaApi.md))
 
-- **이미지 업로드 (카메라 캡처)**
-    - `POST /media/image`
-    - 요청: 이미지 바이너리(PNG/JPEG, multipart 또는 base64), (선택) 캘리브레이션 정보
-    - 응답: 식별 후보(신뢰도 분기 정보 포함), 능동/대화형 가이드 텍스트(TTS용)
+- **사진 업로드 흐름 (3단계 — 정상 경로)** — ⭐ v2.2 신규
+    - **① 의향 신호** `POST /v1/media/intent`
+        - 요청: `{ mime_type, size_bytes, purpose }`
+        - 응답: `{ photo_id, storage_url, put_token, expires_at, max_bytes }`
+        - 메인이 `photo_storage` INSERT (status=PENDING, expires_at=NOW()+300s) + HMAC put_token 발급
+    - **② 본체 전송** `PUT <storage_url>` (보관 PC `10.10.10.122:8004`)
+        - 헤더: `Authorization: Bearer <put_token>`, `Content-Type: image/jpeg|png`
+        - 보관 PC 가 11가지 검증 (서명·op·sub·jti·mime·max·CT·경로) 후 atomic write
+        - 응답: 201 Created
+    - **③ 완료 통지** `POST /v1/media/commit`
+        - 요청: `{ photo_id }`
+        - 메인이 status PENDING → READY, committed_at=NOW(). idempotent.
+    - **④ Vision PC GET 토큰** `POST /v1/media/get_token` (Vision PC 추론 시 메인이 발급)
+        - 요청: `{ photo_id }` (READY 상태만)
+        - 응답: `{ storage_url, get_token (op=get), mime_type, expires_at }`
+- **(레거시/TestMode)** `POST /v1/media/image`
+    - 본체를 메인서버 로컬 `uploads/` 에 저장. 보관 PC 미가동 시 fallback 또는 시드 시나리오용.
 - **음성 텍스트 전달**
     - `POST /speech/utterance`
     - 요청: **폰의 온디바이스 STT 결과 텍스트** + 인식 신뢰도(폰이 제공하는 경우) + 발화 컨텍스트(식별 직후/등록 중/일상 질의 등)
@@ -151,3 +165,4 @@
 | v1.0 | 2026-04-30 | 팀 (3인) | 초안 작성 |
 | v2.0 | 2026-05-06 | 팀 (3인) | ① **음성 바이너리 송수신 제거** — 폰(S24) 온디바이스 STT 채택, 텍스트만 송신. ② 추론 PC `/speech/stt`를 확장 fallback으로 분리. ③ 식약처 OpenAPI 캐시 정책 단순화 — TTL 30일 정책 폐기, e약은요는 lazy 캐싱·낱알식별/DUR은 일괄 적재 + 주기 갱신. ④ GUI ↔ 운용 서버 통신을 "TCP/IP (REST API on HTTP) + 미디어 별도 엔드포인트"로 표기 통일. ⑤ 미디어 송수신 절을 `/media/image` + `/speech/utterance` + (확장)`/speech/audio`로 세분화. ⑥ 안드로이드 S24 입력 디바이스 동작 정의 절(2.4) 신설. ⑦ 복약 이력 기록 요청에 식별 신뢰도·DUR 스냅샷 (선택) 추가. ⑧ 의도 분류 카테고리에 복약 이력 조회·보고서 출력 추가. |
 | v2.1 | 2026-05-07 | 팀 (3인) | ① **§3.3 TTS 정책 신설** — 클라 자체 TTS 우선(Qt6 QTextToSpeech + Windows SAPI), 메인 서버 TTS fallback 어댑터 (`ITtsProvider`). 데이터량 비교 표·어댑터 구조 명시. ② Onboarding 정규화·분기 질문 두 엔드포인트 통합 안내(PillApi v0.3 `POST /v1/pill/onboarding/normalize` 단일화) 표기. |
+| **v2.2** | **2026-05-13** | 팀 (3인) | **사진 흐름 3단계 분리** — ① intent (메인 토큰 발급) → ② PUT 보관 PC (port 8004, 메인 우회) → ③ commit (READY 전이) → ④ Vision PC 용 get_token. 본체가 메인서버를 통과하지 않음. HMAC-SHA256 토큰 (op=put|get, aud=datastorage, jti=photo_id), JWT 시크릿과 분리. 보관 PC 11가지 검증 + atomic write. 청소 잡 (PENDING 만료 → EXPIRED) 자동 동작. 정본: [Api/MediaApi v0.2](Api/MediaApi.md), [시스템_연결구조 v2.3](시스템_연결구조_ver2.md), [system_prompt.md](system_prompt.md). |

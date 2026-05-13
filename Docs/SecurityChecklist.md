@@ -3,11 +3,19 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | 보안 점검·실 구현 가이드 |
-| **버전** | v1.0 |
-| **작성일** | 2026-05-07 |
+| **버전** | v1.1 |
+| **개정일** | 2026-05-13 |
+| **이전 버전** | v1.0 (2026-05-07) |
 
 > 본 문서는 영역 A/B/C 의 TODO 본 구현 시 **반드시 준수해야 할 보안 규칙**을 정리한다.
 > v0.1 골격 단계의 보안 점검(2026-05-07) 결과 발견된 이슈들의 해결책 + 향후 작업 시 참고용 가이드.
+>
+> ⭐ **v1.1 추가 항목** (사진 흐름 ⑤+⑥ 구현 후):
+> - HMAC 시크릿 분리 (`MEDIBRIDGE_JWT_SECRET` ≠ `MEDIBRIDGE_STORAGE_SECRET`)
+> - 보관 PC 11가지 검증 (`iss`/`aud`/`exp`/`op`/`sub`/`jti`/`mime`/`max`/CT/경로/ID 화이트리스트)
+> - 가명화 — 토큰 `sub` 에 `anonymous_id` 사용 (user_id 노출 X)
+> - 파일 시스템 — atomic write (.tmp → rename), 경로 traversal 방어
+> - PDF 변환 — `system()` 금지, `fork+execvp` 사용
 
 ---
 
@@ -211,8 +219,52 @@ drogon::app()
 
 ---
 
+## 12. 사진 흐름 ⑤+⑥ 보안 (v1.1 신규)
+
+### 12.1 HMAC 토큰 시크릿 분리
+- `MEDIBRIDGE_JWT_SECRET` (사용자 JWT) ≠ `MEDIBRIDGE_STORAGE_SECRET` (보관 PC 토큰)
+- 32+ 바이트 무작위. 별도 시크릿이라 한쪽 유출돼도 다른 쪽 토큰 위조 불가.
+- 메인서버와 보관 PC 가 같은 `MEDIBRIDGE_STORAGE_SECRET` 공유 — 토큰 발급(메인) ↔ 검증(보관) 짝.
+
+### 12.2 토큰 payload 검증 (보관 PC 11가지)
+1. HMAC 서명 일치 (`hmac_sha256(secret, header.payload)`)
+2. `iss="medibridge-main"` 강제
+3. `aud="datastorage"` 강제 (JWT 와 혼용 방어)
+4. `exp > now` (TTL 300s, 짧게)
+5. `op` ∈ {`put`, `get`} 일치 (PUT 토큰으로 GET 불가)
+6. URL `{anon}` ↔ token `sub` 일치
+7. URL `{photo_id}` ↔ token `jti` 일치
+8. URL 확장자 ↔ token `mime` 일치
+9. Content-Type ↔ token `mime` 일치
+10. Content-Length ≤ `min(token max, server max)`
+11. `anon`/`photo_id` 정규식 화이트리스트 `[A-Za-z0-9_-]{1,64}` — 경로 traversal 방어
+
+### 12.3 가명화 (PII 보호)
+- 토큰 `sub` 에 **`anonymous_id`** 사용 — `user_id` 토큰 외부 노출 X
+- 파일 시스템 경로: `<storage_root>/<anonymous_id>/<photo_id>.<ext>` (`user_id` X)
+- DB `photo_storage.anonymous_id` FK 만 보유
+
+### 12.4 파일 시스템 보안
+- **atomic write** — `.tmp` 에 쓴 뒤 `rename()` (반쪽 파일 방지)
+- 경로 정규식 화이트리스트 통과 후만 디스크 접근
+- 확장자 화이트리스트 (`jpg`, `png`) — 임의 파일 업로드 방지
+
+### 12.5 외부 프로세스 호출 (Report PDF)
+- `system()` / `popen()` **사용 금지** — 셸 escape 위험
+- **`fork+execvp`** + argv 배열 직접 구성 (인자 escape 위험 0)
+- 임시 파일 `mkstemps` race-free
+- RAII Cleanup struct — 함수 종료 시 항상 `unlink`
+
+### 12.6 청소 잡
+- PENDING + `expires_at < NOW()` → EXPIRED 마킹 (DB 누적 방지)
+- 토큰은 어차피 `exp` 검증으로 거부되니 보안에 직접 영향 X, 운영 가시성 차원
+- 인터벌 `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL` (기본 300s, 0=비활성)
+
+---
+
 ## 변경 이력
 
 | 버전 | 일자 | 변경 사항 |
 | --- | --- | --- |
 | v1.0 | 2026-05-07 | 초안 작성 — v0.1 골격 단계 보안 점검 결과 + 본 구현 가이드 |
+| **v1.1** | **2026-05-13** | §12 신규 — 사진 흐름 ⑤+⑥ 보안 (HMAC 시크릿 분리, 11가지 토큰 검증, 가명화, atomic write, fork+execvp, 청소 잡). 적용 코드: `Services/Media/StorageTokenIssuer`, `DataStorageServer/{TokenVerifier, StorageManager, Photo}`, `Services/Report/ReportPdfRenderer`, `Main.cpp` (청소 잡 `runEvery`). |

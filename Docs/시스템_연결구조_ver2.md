@@ -53,7 +53,7 @@
 | ① | 핸드폰 | (USB → 클라 PC `adb reverse`) | Android | `localhost:5037` adb 데몬 경유 |
 | ② | 클라이언트 PC | **로컬 (localhost)** | Windows 10/11 | Qt6 + QML, 폰 USB 직결 |
 | ③ | 메인 서버 PC | **10.10.10.97** | Ubuntu 24.04 | Drogon C++ + MariaDB 8001/tcp |
-| ④ | 데이터 보관 PC | **10.10.10.122** | Ubuntu 24.04 | 사진 전용 저장소 |
+| ④ | 데이터 보관 PC | **10.10.10.122** | Ubuntu 24.04 | **Drogon C++ 미니 서버 8004/tcp**, 사진 PUT/GET + 토큰 검증 |
 | ⑤ | LLM PC (학습+추론) | **10.10.10.120** | Ubuntu 24.04 (GPU) | FastAPI 8002/tcp |
 | ⑥ | Vision PC (학습+추론) | **10.10.10.128** | Ubuntu 24.04 (GPU) | FastAPI 8003/tcp |
 
@@ -92,18 +92,19 @@
 
 > 📌 **음성 흐름 핵심**: 음성 바이너리는 폰 외부로 나가지 않음. 텍스트만 클라 PC → LLM(메인/추론서버) → 보정된 텍스트 응답.
 
-### 2.2 ② 클라이언트 PC ↔ ③ 메인 서버 (LAN)
+### 2.2 ② 클라이언트 PC ↔ ③ 메인 서버 (LAN, port 8001) — ⭐ v2.3 구현 완료
 
-| 동작 | 흐름 |
-| --- | --- |
-| **사진 업로드 신호** | 클라 PC → 메인 서버 ("사진 업로드 의향" 통지 + 메타데이터: 크기·MIME·요청자) |
-| **저장 가능 판정** | 메인 서버 → 데이터 보관 PC ("디스크·메모리 여유 있나?") |
-| **저장 경로 발급** | 데이터 보관 PC → 메인 서버 (`OK + 경로`) |
-| **클라에게 응답** | 메인 서버 → 클라 PC (`OK + 데이터 보관 PC 경로 + 단기 서명 토큰`) |
-| **메타데이터 저장** | 메인 서버 → MariaDB (`photo_storage` 1행 INSERT — anonymous_id, 경로, 메타) |
-| **실제 사진 전송** | 클라 PC → 데이터 보관 PC 직접 (메인서버 우회, 발급된 경로로 PUT, 토큰 검증) |
+| 동작 | 엔드포인트 | 흐름 |
+| --- | --- | --- |
+| **사진 업로드 의향** | `POST /v1/media/intent` | 클라 → 메인 (mime, size_bytes, purpose) |
+| **메타 + 토큰 발급** | (메인 내부) | photo_storage INSERT (status=PENDING, expires_at=NOW()+300s) + HMAC put_token 발급 |
+| **응답** | `← 201` | photo_id, storage_url, put_token (op=put), expires_at, max_bytes |
+| **실제 사진 전송** | `PUT storage_url` (보관 PC 8004) | 클라 → 보관 PC 직접 (메인 우회, put_token 검증) |
+| **완료 통지** | `POST /v1/media/commit` | 클라 → 메인 (photo_id) → status PENDING → READY |
+| **GET 토큰 발급** | `POST /v1/media/get_token` | Vision PC 추론 시 메인이 발급 (op=get, jti=photo_id) |
 
-> 📌 **컨트롤 평면(메인) ↔ 데이터 평면(데이터 보관) 분리**. AWS S3+RDS 패턴과 유사.
+> 📌 **컨트롤 평면(메인 8001) ↔ 데이터 평면(보관 PC 8004) 분리**. AWS S3+RDS 패턴.
+> 📌 **HMAC 시크릿 분리** — JWT 시크릿(`MEDIBRIDGE_JWT_SECRET`) 과 별개의 `MEDIBRIDGE_STORAGE_SECRET`.
 
 ### 2.3 ③ 메인 서버 ↔ ④ 데이터 보관 PC (사진 데이터 평면)
 
@@ -478,3 +479,14 @@ ExecStart=/usr/local/bin/medibridge_anonymize.sh
 검토 완료 후 본 v2.x 의 내용을:
 - 「시스템 흐름 정리본 v3」으로 통합
 - 「기획서 v3」/「프로토콜 v3」/「DB ERD v4」 로 파급 갱신
+
+---
+
+## 10. 변경 이력
+
+| 버전 | 일자 | 변경 사항 |
+| --- | --- | --- |
+| v2.0 | 2026-05-06 | 초안 |
+| v2.1 | 2026-05-07 | LLM/Vision PC 분리, IP 매트릭스 확정 |
+| v2.2 | 2026-05-07 | Onboarding RAG round-trip + TTS 어댑터 정책 |
+| **v2.3** | **2026-05-13** | **사진 흐름 ⑤+⑥ 구현 완료** — 보관 PC port **8004** 확정 (Drogon C++ 미니 서버), `POST /v1/media/{intent, commit, get_token}` 엔드포인트 명시, HMAC 토큰 시크릿 JWT 와 분리(`MEDIBRIDGE_STORAGE_SECRET`), 11가지 검증 + 청소 잡 + atomic write. 정본: [system_prompt.md](system_prompt.md) + [Api/MediaApi v0.2](Api/MediaApi.md) + 「시스템 흐름 정리본 v3.1 §17」 |

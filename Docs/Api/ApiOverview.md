@@ -3,11 +3,18 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | API 명세서 인덱스 + 공통 규칙 |
-| **버전** | v0.3 |
-| **개정일** | 2026-05-07 |
-| **이전 버전** | v0.2 (2026-05-07, 호환 변경) / v0.1 (2026-05-06) → `Docs/Old/Api/ApiOverview_v0.1_2026-05-07.md` |
+| **버전** | v0.4 |
+| **개정일** | 2026-05-13 |
+| **이전 버전** | v0.3 (2026-05-07) / v0.2 (2026-05-07) / v0.1 (2026-05-06) → `Docs/Old/Api/ApiOverview_v0.1_2026-05-07.md` |
 
 > 본 폴더(`Docs/Api/`)는 메디브릿지 클라이언트 ↔ 메인 서버 ↔ 추론 서버 간의 **REST API 변경 불가 계약**을 정의한다.
+>
+> ⭐ **v0.4 변경 핵심** (사진 흐름 ⑤+⑥ 구현 완료 — 호환 변경):
+> - **MediaApi v0.2** — `POST /v1/media/intent`, `POST /v1/media/commit`, `POST /v1/media/get_token` **신규 3개**. 기존 `POST /v1/media/image` 는 레거시/TestMode fallback 으로 유지
+> - **사진 본체는 메인서버 통과 X** — 메인은 HMAC put_token 만 발급, 클라가 보관 PC (port 8004) 에 직접 PUT
+> - **ReportApi v0.2** — `format=pdf` 실제 동작 (wkhtmltopdf, A4)
+> - **DataStoragePC 포트 확정 8004** (Drogon C++ 미니 서버)
+> - HMAC 토큰 시크릿 분리 — `MEDIBRIDGE_JWT_SECRET` ≠ `MEDIBRIDGE_STORAGE_SECRET`
 >
 > ⭐ **v0.3 변경 핵심** (시스템_연결구조 v2.1 반영):
 > - **§2 호스트 표 IP 확정** — 메인 10.10.10.97 / 데이터 보관 10.10.10.122 / **LLM 추론 10.10.10.120 / Vision 추론 10.10.10.128** (추론 서버 카테고리별 2대 분리)
@@ -27,8 +34,8 @@
 | --- | --- | --- | --- |
 | [AuthApi.md](AuthApi.md) | 모듈 6 (인증) | `POST /v1/auth/signup`, `/v1/auth/login`, `/v1/auth/logout` | v0.1 |
 | [HistoryApi.md](HistoryApi.md) | 모듈 2 (복약 이력) | `POST /v1/history/record`, `GET /v1/history/list` | v0.1 |
-| [ReportApi.md](ReportApi.md) | 모듈 5 (통합 보고서) | `GET /v1/report/generate` | v0.1 |
-| [MediaApi.md](MediaApi.md) | 미디어 송수신 | `POST /v1/media/image` | v0.1 |
+| [ReportApi.md](ReportApi.md) | 모듈 5 (통합 보고서) | `GET /v1/report/generate` (json/html/pdf) | **v0.2** |
+| [MediaApi.md](MediaApi.md) | 미디어 송수신 | `POST /v1/media/{intent, commit, get_token, image(레거시)}` ⭐ | **v0.2** |
 | [SpeechApi.md](SpeechApi.md) | 음성 텍스트 (폰 STT) | `POST /v1/speech/utterance` | v0.1 |
 | [PillApi.md](PillApi.md) | 모듈 1 (식별·DUR + 약 풀 + 단계별 좁히기 + Onboarding 정규화) | `POST /v1/pill/identify`, `/v1/pill/identify/narrow`, `/v1/pill/onboarding/normalize` ⭐, `/v1/pill/pool/*` | **v0.3** |
 | [MonitoringApi.md](MonitoringApi.md) | 자원 모니터링 (전 영역) | `GET /health`, `GET /metrics` | v0.1 |
@@ -41,7 +48,7 @@
 | --- | --- | --- | --- | --- |
 | Client (PhoneAdapter) | Windows 10/11 | `localhost` (폰 → adb reverse) | 8000 | `http://localhost:8000` |
 | **MainServer** | Ubuntu 24.04 | **10.10.10.97** | 8001 | `http://10.10.10.97:8001/v1` |
-| **DataStoragePC** ⭐ | Ubuntu 24.04 | **10.10.10.122** | 8004 (예정) | 메인서버 발급 단기 서명 토큰 + 직접 PUT/GET (사진 전용) |
+| **DataStoragePC** ⭐ | Ubuntu 24.04 | **10.10.10.122** | **8004** | Drogon C++ 미니 서버. `PUT/GET /storage/photos/{anon}/{photo_id}.{ext}` + HMAC 토큰 검증 |
 | **InferenceServer (LLM)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.120** | 8002 | `http://10.10.10.120:8002/v1` (Stage 0.5 의도 분류 / Onboarding RAG / 일반 안내) |
 | **InferenceServer (Vision)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.128** | 8003 | `http://10.10.10.128:8003/v1` (YOLO·PaddleOCR·OpenCV) |
 

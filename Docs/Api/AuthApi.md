@@ -142,3 +142,4 @@
 | 버전 | 일자 | 변경 사항 |
 | --- | --- | --- |
 | v0.1 | 2026-05-06 | 초안 — 회원가입·로그인·로그아웃 정의, JWT 발급 정책, 에러 코드 정리 |
+| **(2026-05-13 메모)** | [ApiOverview v0.4](ApiOverview.md) 호환. 본 명세 변경 없음. 메인서버 측 `Services/Auth/` 모듈 (PasswordHasher PBKDF2 + JwtIssuer HS256 + UserManager + Authenticator) 구현 완료 검증됨. |

@@ -3,9 +3,15 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | DB ERD (MariaDB 스키마) |
-| **버전** | v4.0 |
-| **개정일** | 2026-05-07 |
-| **이전 버전** | v3.0 → `Docs/Old/DB_ERD_ver3_2026-05-07.md` |
+| **버전** | v4.1 |
+| **개정일** | 2026-05-13 |
+| **이전 버전** | v4.0 → `Docs/Old/DB_ERD_ver4_2026-05-07.md` |
+
+> ⭐ **v4.1 변경 핵심** (사진 흐름 ⑤+⑥ 통합):
+> 1. **`photo_storage`** 컬럼 추가 — `status` (ENUM `PENDING`/`READY`/`EXPIRED`/`FAILED`), `expires_at`, `committed_at`
+> 2. **마이그레이션 `002_photo_storage_intent.sql`** 분리 — 기존 `001_init_schema.sql` 위에 ALTER
+> 3. 인덱스 `idx_status_expires (status, expires_at)` 추가 — 청소 잡 효율
+> 4. 기존 row 는 모두 `READY` 로 간주 (시드 보존)
 
 > ⭐ **v4.0 변경 핵심** (가명화 정책 도입 + 데이터 보관 PC 메타):
 > 1. **`pseudonym_map`** 신규 — 단일 끊기 매핑 (`user_id` 가 유일하게 user 와 연결되는 컬럼)
@@ -173,19 +179,33 @@ CREATE TABLE user_reports (
 -- 클라/추론/학습 PC 가 본 테이블의 storage_path 로 데이터 보관 PC 에 직접 접근.
 
 CREATE TABLE photo_storage (
-    photo_id VARCHAR(64) PRIMARY KEY COMMENT '사진 고유 ID (UUID v4)',
+    photo_id VARCHAR(64) PRIMARY KEY COMMENT '사진 고유 ID (UUID v4, ph_ 접두)',
     anonymous_id VARCHAR(64) COMMENT '가명 ID (소유자 추적용, 끊기 가능)',
-    storage_path TEXT NOT NULL COMMENT '데이터 보관 PC 절대 경로',
-    mime_type VARCHAR(50) COMMENT 'image/png, image/jpeg 등',
-    file_size_bytes BIGINT COMMENT '바이트 단위',
+    storage_path TEXT NOT NULL COMMENT '내부 경로 — /photos/<anon>/<photo_id>.<ext>',
+    mime_type VARCHAR(50) COMMENT 'image/png, image/jpeg',
+    file_size_bytes BIGINT COMMENT '바이트 단위 (intent 시점 예상값)',
     taken_at DATETIME COMMENT '촬영 시각 (클라 측 캡쳐 시점)',
     request_id VARCHAR(100) COMMENT '클라 요청 추적 ID (UUID)',
     purpose ENUM('IDENTIFY', 'TRAIN', 'OTHER') DEFAULT 'IDENTIFY',
+
+    -- ⭐ v4.1 (002_photo_storage_intent 마이그레이션) — 사진 흐름 ⑤+⑥
+    status ENUM('PENDING','READY','EXPIRED','FAILED') NOT NULL DEFAULT 'READY'
+        COMMENT 'PENDING: intent 발급 후 PUT 대기 / READY: commit 완료 / EXPIRED: 청소 잡 마킹 / FAILED: 예외',
+    expires_at DATETIME NULL COMMENT '토큰 TTL 기반 만료 (기본 300s). 청소 잡이 PENDING & 경과 row 를 EXPIRED 로 전이',
+    committed_at DATETIME NULL COMMENT 'commit 호출 시점 (READY 전이 시 NOW())',
+
     uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (anonymous_id) REFERENCES pseudonym_map(anonymous_id),
+    FOREIGN KEY (anonymous_id) REFERENCES pseudonym_map(anonymous_id) ON DELETE CASCADE,
     INDEX idx_anon_uploaded (anonymous_id, uploaded_at),
-    INDEX idx_request (request_id)
-) COMMENT '데이터 보관 PC 사진 인덱스 — 파일명: <anonymous_id>_<photo_id>.<ext>';
+    INDEX idx_request (request_id),
+    INDEX idx_status_expires (status, expires_at)   -- ⭐ v4.1 — 청소 잡 효율
+) COMMENT '데이터 보관 PC 사진 인덱스 — 파일 실체는 보관 PC 디스크 <root>/<anon>/<photo_id>.<ext>';
+
+-- ⭐ v4.1 흐름:
+--   1) POST /v1/media/intent  → INSERT (status=PENDING, expires_at=NOW()+TTL, committed_at=NULL)
+--   2) 클라가 보관 PC 에 직접 PUT (메인서버 통과 X)
+--   3) POST /v1/media/commit  → UPDATE status=READY, committed_at=NOW()
+--   4) 청소 잡 (5분 주기, runEvery): WHERE status='PENDING' AND expires_at<NOW() → status='EXPIRED'
 
 -- =====================================================
 -- 8. (선택, 확장) 단계별 좁히기 세션 — MVP 미사용
@@ -281,3 +301,4 @@ ALTER TABLE user_medication_pool
 | v2.0 | 2026-05-06 | 팀 | symptoms→memo, confidence_score·dur_snapshot, soft delete |
 | v3.0 | 2026-05-07 | 팀 | 목업 분석 — classification_no/name + user_category + 인덱스 |
 | v4.0 | 2026-05-07 | 팀 | 가명화 정책 도입 — ① `pseudonym_map` 신규 (단일 끊기 매핑) ② 데이터 테이블 `user_id` FK → `anonymous_id` FK 일괄 교체 (`user_medication_pool`, `medication_intake_logs`, `user_reports`) ③ `photo_storage` 신규 (데이터 보관 PC 사진 메타) ④ 익명화 운영 SQL 명시 (매핑 끊기 + 자유 텍스트 마스킹 + 사용자 탈퇴) ⑤ v3 → v4 마이그레이션 가이드. 관련 문서: 「시스템_연결구조 ver2 §8」 |
+| v4.1 | 2026-05-13 | 팀 | 사진 흐름 ⑤+⑥ 통합 — `photo_storage` 에 `status` (ENUM PENDING/READY/EXPIRED/FAILED) / `expires_at` / `committed_at` 컬럼 추가 + `idx_status_expires` 인덱스. 마이그레이션 `002_photo_storage_intent.sql` 분리. 흐름: intent → PUT → commit → 청소 잡. 관련: 「Api/MediaApi v0.2」 + 「시스템 흐름 정리본 v3」 |

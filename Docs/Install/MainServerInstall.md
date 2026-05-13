@@ -6,9 +6,12 @@
 | **대상 OS** | Ubuntu 24.04 LTS |
 | **호스트** | `10.10.10.97` ([시스템_연결구조 v2.2 §1.2](../시스템_연결구조_ver2.md)) |
 | **역할** | Drogon C++ HTTP, MariaDB(사용자/약 풀/이력/식약처 데이터/photo_storage), DUR 안내, 인젝션 방어 |
-| **버전** | v0.2 (TestMode 도입 반영) |
-| **개정일** | 2026-05-07 |
+| **버전** | v0.3 (사진 흐름 ⑤+⑥ + Storage 시크릿 + 청소 잡) |
+| **개정일** | 2026-05-13 |
+| **이전 버전** | v0.2 (2026-05-07) |
 
+> ⭐ **v0.3 변경 핵심**: ① `MEDIBRIDGE_STORAGE_SECRET` 신규 환경변수 (보관 PC 토큰 — JWT 시크릿과 분리, 32+ 바이트) ② `MEDIBRIDGE_STORAGE_BASE_URL` (기본 10.10.10.122:8004) ③ 청소 잡 인터벌 환경변수 ④ 마이그레이션 002 (`photo_storage` status/expires_at/committed_at) ⑤ `config.json` 파싱 (jsoncpp) 지원 ⑥ wkhtmltopdf 의존성 추가 (Report PDF) ⑦ `import_pdma.py` (식약처 CSV 적재) — `python3-pymysql` 의존성
+>
 > ⭐ **v0.2 변경 핵심**: ① Python/FastAPI → **Drogon C++** 으로 갱신 ② **TestMode** 도입 (`MEDIBRIDGE_TEST_MODE`) — 추론·파일저장 우회 + DB seed 사용 ③ 스키마 마이그레이션·시드 적용 절차
 
 ---
@@ -47,8 +50,15 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install -y \
     build-essential cmake git pkg-config \
     libssl-dev libmariadb-dev libjsoncpp-dev \
-    uuid-dev zlib1g-dev libbrotli-dev
+    uuid-dev zlib1g-dev libbrotli-dev \
+    libdrogon-dev \
+    wkhtmltopdf \
+    python3-pymysql
 ```
+
+- `wkhtmltopdf` — Report PDF 변환 (`format=pdf`)
+- `python3-pymysql` — 식약처 CSV 적재 도구 (`Scripts/import_pdma.py`)
+- `libdrogon-dev` — Ubuntu 24.04 에서 apt 로 가능 (3.2 의 소스 빌드 대신 빠른 옵션)
 
 ### 3.2 Drogon 설치 (소스 빌드 권장)
 
@@ -85,8 +95,16 @@ SQL
 # 1) 스키마 (한 번만)
 mysql -u medibridge_app -p medibridge < MainServer/Database/Migrations/001_init_schema.sql
 
-# 2) 더미 데이터 (TestMode 사용 시에만)
+# 2) 마이그레이션 002 — photo_storage 에 status/expires_at/committed_at 추가 (v0.3)
+mysql -u medibridge_app -p medibridge < MainServer/Database/Migrations/002_photo_storage_intent.sql
+
+# 3) 더미 데이터 (TestMode 사용 시에만)
 mysql -u medibridge_app -p medibridge < MainServer/Database/Seeds/dev_seed.sql
+```
+
+또는 한 번에:
+```bash
+sudo bash MainServer/Scripts/smoke_setup.sh
 ```
 
 > 더미 식별 prefix: `999800xxx` (식약처 실 코드와 충돌 X), `test_user_xxx`, `anon_test_xxx`. 상세는 [Docs/TestMode.md](../TestMode.md) §2.
@@ -102,23 +120,48 @@ make -j$(nproc)
 
 빌드 결과물: `build/MediBridgeMainServer`
 
-### 3.6 환경 변수 설정
+### 3.6 환경 변수 설정 (v0.3)
 
 ```bash
 # /etc/environment 또는 systemd Environment= 설정
 export MEDIBRIDGE_DB_PASSWORD='<3.3 에서 정한 비밀번호>'
-export MEDIBRIDGE_JWT_SECRET='<32자 이상 랜덤 문자열>'    # production 필수
-export MEDIBRIDGE_PDMA_KEY='<식약처 OpenAPI 서비스 키>'  # 운영 시 필요
-export MEDIBRIDGE_ENV='development'                       # 또는 production
+export MEDIBRIDGE_JWT_SECRET='<32자 이상 랜덤 문자열>'       # production 필수
+export MEDIBRIDGE_STORAGE_SECRET='<32자 이상, JWT 와 다른 시크릿>'    # ⭐ v0.3 신규 — 보관 PC 토큰
+export MEDIBRIDGE_STORAGE_BASE_URL='http://10.10.10.122:8004'        # ⭐ v0.3
+export MEDIBRIDGE_STORAGE_TOKEN_TTL='300'                            # PUT/GET 토큰 만료(초)
+export MEDIBRIDGE_STORAGE_MAX_BYTES='10485760'                       # 10MB
+export MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL='300'                     # PENDING 청소 잡 인터벌(초). 0=비활성
+export MEDIBRIDGE_PDMA_KEY='<식약처 OpenAPI 서비스 키>'              # 운영 시 lazy 호출용
+export MEDIBRIDGE_ENV='development'                                   # 또는 production
 
 # TestMode 활성 (개발 단계 권장)
 export MEDIBRIDGE_TEST_MODE='true'
 ```
 
 > ⚠ **production 환경(`MEDIBRIDGE_ENV=production`)에서 `MEDIBRIDGE_TEST_MODE` 는 강제 비활성**됩니다 (Config.cpp 검증). 보안상 의도된 동작.
+> ⚠ **`MEDIBRIDGE_STORAGE_SECRET` 은 JWT 시크릿과 절대 동일 X.** 보관 PC 와 같은 값을 공유해야 PUT/GET 토큰 검증 가능.
+
+### 3.6-B `config.json` 사용 (선택 — v0.3 신규)
+
+비밀 정보(시크릿·DB 비밀번호)는 환경변수에 두되, 그 외 설정은 `config.json` 으로 관리 가능. 샘플: `MainServer/config.sample.json`.
+
+```json
+{
+  "server":    { "port": 8001, "thread_num": 0, "worker_pool_size": 4 },
+  "db":        { "host": "127.0.0.1", "port": 3306, "user": "medibridge_app", "name": "medibridge", "pool_size": 10 },
+  "inference": { "llm_base": "http://10.10.10.120:8002", "vision_base": "http://10.10.10.128:8003", "request_timeout_ms": 5000 },
+  "storage":   { "base_url": "http://10.10.10.122:8004", "token_ttl_seconds": 300, "max_bytes": 10485760, "cleanup_interval_seconds": 300 },
+  "jwt":       { "expire_seconds": 86400 },
+  "pdma":      { "api_base_url": "https://apis.data.go.kr" },
+  "test_mode": false
+}
+```
+
+우선순위: **기본값 < `config.json` < 환경변수** (환경변수가 항상 최우선).
 
 ### 3.7 실행
 
+직접 실행:
 ```bash
 cd MainServer
 ./build/MediBridgeMainServer
@@ -127,7 +170,15 @@ cd MainServer
 # [Config] MEDIBRIDGE_TEST_MODE = TRUE  → 추론·파일저장 우회, DB seed 사용
 # [DB] connected — 127.0.0.1:3306/medibridge (pool=10)
 # [Main]   - 포트: 8001
+# [Main]   - 청소 잡 등록 — 300초 간격 (PENDING expires_at 경과 → EXPIRED)
 ```
+
+또는 부팅 스크립트 (시연용):
+```bash
+bash MainServer/Scripts/medibridge-up.sh
+```
+
+→ MariaDB 자동 시작 + 환경변수 + 백그라운드 실행 + `/health` ping 부팅 확인.
 
 ### 3.8 동작 확인
 
@@ -180,17 +231,23 @@ sudo systemctl enable --now medibridge-main
 
 ---
 
-## 4. 설치 완료 체크리스트
+## 4. 설치 완료 체크리스트 (v0.3)
 
 - [ ] Ubuntu 24.04 + sudo 사용자 준비
 - [ ] LAN 고정 IP `10.10.10.97`
-- [ ] Drogon 1.9+ 빌드/설치
+- [ ] Drogon 1.8+ 설치 (apt 또는 소스 빌드)
+- [ ] `wkhtmltopdf` 설치 (Report PDF 용)
+- [ ] `python3-pymysql` 설치 (식약처 CSV 적재)
 - [ ] MariaDB 11 + `medibridge` DB + `medibridge_app` 사용자
 - [ ] 스키마 적용 (`001_init_schema.sql`)
+- [ ] **마이그레이션 002 적용** (`002_photo_storage_intent.sql`) ⭐ v0.3
 - [ ] 시드 적용 (`dev_seed.sql`) — TestMode 사용 시
-- [ ] 환경변수 설정 (`MEDIBRIDGE_DB_PASSWORD`, `MEDIBRIDGE_JWT_SECRET`, `MEDIBRIDGE_TEST_MODE`)
+- [ ] 환경변수 설정 — `MEDIBRIDGE_DB_PASSWORD`, `MEDIBRIDGE_JWT_SECRET`, **`MEDIBRIDGE_STORAGE_SECRET`** ⭐ v0.3, `MEDIBRIDGE_TEST_MODE`
+- [ ] **데이터 보관 PC 와 `MEDIBRIDGE_STORAGE_SECRET` 동일성 확인** ⭐ v0.3
 - [ ] `MainServer` CMake 빌드
-- [ ] 실행 → Health 200 응답 / 시드 로그인 성공
+- [ ] 실행 → Health 200 응답 + `[Main] - 청소 잡 등록 — N초 간격` 로그 보임 / 시드 로그인 성공
+- [ ] PDF 보고서 — `GET /v1/report/generate?format=pdf` 200 + `application/pdf` 응답
+- [ ] 사진 흐름 — `/v1/media/intent` → 보관 PC PUT → `/v1/media/commit` 풀 시나리오 통과
 - [ ] ufw 8001/tcp 허용
 
 ---
@@ -205,6 +262,10 @@ sudo systemctl enable --now medibridge-main
 | TestMode 인데 Vision/LLM 호출 시도 | `MEDIBRIDGE_TEST_MODE=true` 환경변수 확인 + 시작 로그의 `[Config] MEDIBRIDGE_TEST_MODE = TRUE` 라인 확인. |
 | seed 적용 안 됨 (FK 위반) | `001_init_schema.sql` 먼저 적용 후 `dev_seed.sql` 적용. 순서 주의. |
 | production 에서 시드 사용자로 로그인 가능 | seed 미제거. production 적용 전 `DELETE FROM users WHERE email LIKE '%@medibridge.local'`. |
+| 사진 PUT 시 보관 PC 가 401 INVALID_TOKEN | 메인 `MEDIBRIDGE_STORAGE_SECRET` ≠ 보관 PC `MEDIBRIDGE_STORAGE_SECRET`. 동일하게 맞추기. |
+| `format=pdf` 500 `PDF_RENDER_FAILED` | `wkhtmltopdf` 미설치 → `sudo apt install wkhtmltopdf`. 또는 PATH 확인 (`which wkhtmltopdf`). |
+| `/v1/pill/identify` 운영 모드 502 VISION_UPSTREAM_ERROR | Vision PC (10.10.10.128:8003) 미가동. TestMode 활성 또는 Vision PC 띄우기. |
+| 청소 잡이 동작 안 함 | 부팅 로그에 `[Main] - 청소 잡 등록` 라인 확인. `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL=0` 이면 비활성. |
 
 ---
 

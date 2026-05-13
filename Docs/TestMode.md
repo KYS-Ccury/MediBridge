@@ -3,8 +3,9 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | TestMode (개발 중 더미 응답) 설계서 |
-| **버전** | v0.1 |
-| **작성일** | 2026-05-07 |
+| **버전** | v0.2 |
+| **개정일** | 2026-05-13 |
+| **이전 버전** | v0.1 (2026-05-07) |
 
 > 추론 서버(LLM/Vision PC) 와 데이터 보관 PC 가 아직 가동되지 않은 시점에 **메인 서버만으로 클라이언트가 진짜처럼 동작하는 서비스를 체험**할 수 있게 하는 개발용 동작 모드.
 >
@@ -29,7 +30,10 @@ MEDIBRIDGE_TEST_MODE = "true" | "false"  (기본 false)
 | `POST /v1/pill/identify/narrow` | Vision PC 호출 X. seed 기반 다음 질문 결정 (color/shape/engraving 순) | Vision PC 호출 |
 | `POST /v1/pill/onboarding/normalize` | LLM PC 호출 X. **seed `pill_identification` 의 `drug_name` LIKE 매칭** + 가짜 분기 질문 | LLM PC 호출 (ChromaDB 벡터 검색) |
 | `POST /v1/speech/utterance` | LLM PC 호출 X. 발화 텍스트 키워드 매칭으로 의도 분류 더미 | LLM PC 호출 |
-| `POST /v1/media/image` | Data Storage PC 호출 X. **`photo_storage` 메타만 INSERT**, 가짜 `storage_path` (실 파일 X) | Data Storage PC PUT |
+| `POST /v1/media/intent` ⭐ v0.2 | **실 DB** — `photo_storage` INSERT (status=PENDING, expires_at=NOW()+TTL) + 실 HMAC put_token 발급. 보관 PC URL 은 환경변수대로 응답 | 동일 — 실 동작 |
+| `POST /v1/media/commit` ⭐ v0.2 | **실 DB** — status PENDING → READY. idempotent | 동일 |
+| `POST /v1/media/get_token` ⭐ v0.2 | **실 DB + 실 HMAC** — 본인 소유 + READY 상태만 발급 | 동일 |
+| `POST /v1/media/image` (레거시) | Data Storage PC 호출 X. **`photo_storage` 메타만 INSERT**, 가짜 `storage_path` (실 파일 X), status=READY 즉시 마킹 | 레거시 — production 미사용 |
 | `POST /v1/pill/pool` | **실 DB CRUD** (item_code 검증 포함) | 동일 |
 | `POST /v1/history/record` | **실 DB CRUD** | 동일 |
 | `GET /v1/report/generate` | **실 DB 조회** + 기본 HTML/PDF | 동일 |
@@ -128,3 +132,4 @@ MainServer/Services/TestMode/
 | 버전 | 일자 | 작성자 | 변경 사항 |
 | --- | --- | --- | --- |
 | v0.1 | 2026-05-07 | 팀 (3인) | 초안 — DB-backed dummy 데이터 정책, seed prefix 규칙, 서비스 분기 패턴 |
+| **v0.2** | **2026-05-13** | 팀 (3인) | **사진 흐름 ⑤+⑥ TestMode 분기 명확화** — `/v1/media/{intent, commit, get_token}` 은 TestMode 에서도 **실 DB + 실 HMAC** 으로 동작 (보관 PC 가 같은 시크릿이면 실제 PUT 가능). 레거시 `/v1/media/image` 는 TestMode 한정 fallback. Pill identify 의 운영 모드 분기에서 Vision PC 미가동 시 502 반환 (TestMode 활성화 권장). |

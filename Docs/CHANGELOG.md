@@ -11,6 +11,67 @@
 
 ## [Unreleased]
 
+### Added (2026-05-13 — 사진 흐름 ⑤+⑥ + 보관 PC + Report PDF + 청소 잡)
+
+#### 신규 모듈 — DataStorageServer (보관 PC Drogon 미니 서버, port 8004)
+- `DataStorageServer/Main.cpp` + `Config.{cpp,h}` + `CMakeLists.txt` — 진입점·설정·빌드
+- `DataStorageServer/Routers/Photo.{cpp,h}` — `PUT/GET /storage/photos/{anon}/{photo_id}.{ext}`
+  - 11가지 보안 검증 (서명 / iss / aud / exp / op / sub / jti / mime / max / Content-Type / 경로 화이트리스트)
+- `DataStorageServer/Routers/Monitoring.{cpp,h}` — `/health` + 디스크 여유
+- `DataStorageServer/Services/TokenVerifier.{cpp,h}` — HMAC-SHA256 (JWT 호환) 검증
+- `DataStorageServer/Services/StorageManager.{cpp,h}` — atomic write (.tmp → rename), 경로 traversal 방어
+- `DataStorageServer/Scripts/datastorage-up.sh` + `smoke_test.sh` — 부팅·풀 시나리오 검증
+- `DataStorageServer/README.md` — 환경변수·보안표·디스크 구조
+
+#### 메인서버 — 사진 흐름 ⑤+⑥ 통합
+- `MainServer/Services/Media/StorageTokenIssuer.{cpp,h}` — HMAC 토큰 발급 (`op`=put|get, `aud`=datastorage, `jti`=photo_id)
+- `MainServer/Routers/Media.{cpp,h}` 확장 — 신규 엔드포인트 3개:
+  - `POST /v1/media/intent` — 의향 신호 → photo_id + storage_url + put_token + expires_at
+  - `POST /v1/media/commit` — PUT 완료 통지 → PENDING → READY (idempotent)
+  - `POST /v1/media/get_token` — Vision PC 용 GET 토큰 (READY 상태만)
+- `MainServer/Schemas/MediaSchema.{cpp,h}` — Intent/Commit/GetToken Request/Response 6 struct
+- `MainServer/Routers/Pill.cpp` `handle_identify` 운영 모드 — photo_storage 조회 → GET 토큰 발급 → Vision PC `detect_pills_remote` 호출 → 응답 → DUR 페어 매칭
+- `MainServer/Services/Inference/VisionInferenceClient` — `detect_pills_remote(RemoteDetectParams)` 추가 (페이로드: photo_id + storage_url + get_token + mime)
+- `MainServer/Database/Migrations/002_photo_storage_intent.sql` — `status`(ENUM PENDING/READY/EXPIRED/FAILED) + `expires_at` + `committed_at` 컬럼 + 인덱스
+
+#### 메인서버 — 청소 잡 (PENDING expires_at → EXPIRED)
+- `MainServer/Main.cpp` — Drogon `app().getLoop()->runEvery(interval, ...)` 등록
+- `MainServer/Config` — `storage_cleanup_interval_seconds` 추가 (env `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL`, 기본 300s, 0=비활성)
+
+#### 메인서버 — 식약처·Report·DUR·Config
+- `MainServer/Scripts/import_pdma.py` — 식약처 CSV/Excel 일괄 적재 (UPSERT, UTF-8/CP949 자동, .xlsx 지원)
+  - 샘플: `sample_pdma_pill.csv`, `sample_pdma_overview.csv`, `sample_pdma_dur.csv`
+- `MainServer/Services/Report/ReportHtmlRenderer.cpp` — A4 인쇄용 HTML (`@page` + `@media print`, XSS escape, 인쇄 색감)
+- `MainServer/Services/Report/ReportPdfRenderer.cpp` — wkhtmltopdf subprocess (fork+execvp, mkstemps race-free, RAII 정리)
+- `MainServer/Services/Dur/DurQueryEngine.cpp` — 양방향 페어 SQL + dedup, `prohibit_reason` 그대로 인용
+- `MainServer/Services/Pdma/PdmaApiClient.cpp` — e약은요 HTTPS 호출 (`getDrbEasyDrugList`), 비동기 콜백
+- `MainServer/Services/Pdma/DrugOverviewCache.cpp` — 캐시 hit/miss + UPSERT
+- `MainServer/Config.cpp` — `apply_json_file` (jsoncpp), `apply_env_vars`, `validate` 3단계 분리. 환경변수 항상 최우선.
+- `MainServer/config.sample.json` — 시크릿 제외 모든 설정 예시
+- `MainServer/Routers/Report.cpp` `format=pdf` 분기 — WorkerPool 위임, `Content-Disposition` 헤더
+
+#### 신규 환경변수
+- `MEDIBRIDGE_STORAGE_BASE_URL` — 보관 PC URL (기본 `http://10.10.10.122:8004`)
+- `MEDIBRIDGE_STORAGE_SECRET` — 보관 PC 토큰 시크릿 (JWT 와 분리, 32+ 바이트)
+- `MEDIBRIDGE_STORAGE_TOKEN_TTL` — 토큰 만료 (기본 300s)
+- `MEDIBRIDGE_STORAGE_MAX_BYTES` — 업로드 최대 (기본 10MB)
+- `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL` — 청소 잡 인터벌 (기본 300s, 0=비활성)
+
+#### Verified — end-to-end 풀 시나리오
+- 메인서버 + 보관 PC 동시 가동 → 로그인 → intent → PUT → commit → 디스크 파일 존재 + MD5 무결성 일치
+- 보안: 만료 토큰 401 / PUT 토큰으로 GET 401 / jti mismatch 403
+- Report PDF: A4 1페이지, 64KB, Qt 5.15 producer, 한국어 폰트 자동
+- 청소 잡: PENDING 만료 row → EXPIRED 마킹 + 로그 출력
+- 식약처 CSV: pill 4건 / overview 4건 / dur 2건 UPSERT 성공
+
+#### Docs
+- `Docs/Architecture/MediBridge_Architecture_MVP.pptx` — 10 슬라이드 아키텍처 도해 (격자 + 엘보 화살표 + ⑥ Client/Vision↔Storage 데이터 평면)
+- `Docs/system_prompt.md` — 시스템 운영 명령어 정본 (시작/종료/로그/portproxy/트러블슈팅)
+- `MainServer/Scripts/medibridge-portproxy.ps1` — 8001 + 8004 일괄 포워딩
+- `MainServer/Scripts/medibridge-up.sh` — `MEDIBRIDGE_STORAGE_*` 환경변수 추가
+
+---
+
 ### Added (2026-05-07 추가)
 - `MainServer/Services/Auth/PasswordHasher.cpp` 실 구현 (PBKDF2-SHA256 / OpenSSL only)
 - `MainServer/Services/Auth/JwtIssuer.cpp` 실 구현 (HS256 표준 JWT / OpenSSL HMAC)

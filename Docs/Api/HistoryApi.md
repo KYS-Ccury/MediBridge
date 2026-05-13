@@ -143,3 +143,4 @@
 | 버전 | 일자 | 변경 사항 |
 | --- | --- | --- |
 | v0.1 | 2026-05-06 | 초안 — 기록·조회 정의, time_slot 자동 분류, dur_snapshot 스냅샷 컬럼 매핑 |
+| **(2026-05-13 메모)** | [ApiOverview v0.4](ApiOverview.md) 호환. 본 명세 변경 없음. 메인서버 `Routers/History.cpp` 실 DB CRUD 구현 완료. anonymous_id 기반 INSERT/SELECT 확인 완료. |

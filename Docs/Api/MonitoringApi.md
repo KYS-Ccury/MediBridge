@@ -215,3 +215,4 @@ gpu_utilization_percent{service="inference_server",gpu="0"} 35.2
 | 버전 | 일자 | 변경 사항 |
 | --- | --- | --- |
 | v0.1 | 2026-05-06 | 초안 — `/health`, `/metrics` 정의, 서버별 추가 필드, Prometheus 확장 자리, Client는 콘솔 로그 정책 |
+| **(2026-05-13 메모)** | [ApiOverview v0.4](ApiOverview.md) 호환. 본 명세 변경 없음. 메인서버 `/health` 에 `test_mode_active` reason 표기 동작 검증. 데이터 보관 PC(`10.10.10.122:8004`) 도 `/health` 구현 — 응답에 `disk_free_bytes`, `disk_total_bytes`, `storage_root_exists` 추가. |

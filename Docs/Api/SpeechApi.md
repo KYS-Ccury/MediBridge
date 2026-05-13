@@ -134,3 +134,4 @@
 | 버전 | 일자 | 변경 사항 |
 | --- | --- | --- |
 | v0.1 | 2026-05-06 | 초안 — 폰 온디바이스 STT 텍스트 송신, Stage 0.5 의도 카테고리, injection_flag, 확장 fallback 자리 정의 |
+| **(2026-05-13 메모)** | [ApiOverview v0.4](ApiOverview.md) 호환. 본 명세 변경 없음. 메인서버 `Routers/Speech.cpp` TestMode 동작. 운영 모드는 LLM PC(`10.10.10.120:8002`) Stage 0.5 가동 필요. `Services/Inference/IntentInferenceClient` 호출 형태 정의됨. |

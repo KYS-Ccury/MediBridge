@@ -25,7 +25,8 @@
 | **개발 일정·역할 분담** | [개발계획서_ver2.md](개발계획서_ver2.md) | 16일 일정 |
 | **보안 점검 체크리스트** | [SecurityChecklist.md](SecurityChecklist.md) | OWASP 기반 |
 | **TestMode 설계서** | [TestMode.md](TestMode.md) | 추론·파일저장 우회 + DB seed 응답 (개발용) |
-| **설치 매뉴얼** | [Install/](Install/) | OS·기기별 설정. MainServerInstall v0.2 (Drogon + TestMode) |
+| **시스템 운영 명령어** | [system_prompt.md](system_prompt.md) | 메인·보관 PC 켜기/끄기/로그/포트 — 단계 가이드 |
+| **설치 매뉴얼** | [Install/](Install/) | OS·기기별 설정. MainServer v0.3 + **DataStorage 신규** |
 
 ---
 
@@ -33,11 +34,11 @@
 
 | 파일 | 모듈 | 본 버전 |
 | --- | --- | --- |
-| [ApiOverview.md](Api/ApiOverview.md) | 인덱스 + 공통 규칙 (호스트 IP 확정, 추론 LLM/Vision 분리) | **v0.3** |
+| [ApiOverview.md](Api/ApiOverview.md) | 인덱스 + 공통 규칙 (호스트 IP 확정, 추론 LLM/Vision 분리) | **v0.4** |
 | [AuthApi.md](Api/AuthApi.md) | 모듈 6 — 인증 | v0.1 |
 | [HistoryApi.md](Api/HistoryApi.md) | 모듈 2 — 복약 이력 | v0.1 |
-| [ReportApi.md](Api/ReportApi.md) | 모듈 5 — 통합 보고서 | v0.1 |
-| [MediaApi.md](Api/MediaApi.md) | 미디어 송수신 | v0.1 |
+| [ReportApi.md](Api/ReportApi.md) | 모듈 5 — 통합 보고서 (HTML/PDF) | **v0.2** |
+| [MediaApi.md](Api/MediaApi.md) | 미디어 송수신 — intent/commit/get_token + 보관 PC 직접 PUT ⭐ | **v0.2** |
 | [SpeechApi.md](Api/SpeechApi.md) | 음성 텍스트 (폰 STT) | v0.1 |
 | [PillApi.md](Api/PillApi.md) | 모듈 1 — 식별·DUR + 약 풀 + 단계별 좁히기 + Onboarding 정규화 ⭐ | **v0.3** |
 | [MonitoringApi.md](Api/MonitoringApi.md) | 자원 모니터링 | v0.1 |
@@ -50,29 +51,37 @@
 Docs/
 ├── README.md                       # 본 파일 (인덱스)
 ├── CHANGELOG.md                    # 코드·문서 변경 이력
+├── system_prompt.md                # ⭐ 시스템 운영 명령어 정리
 ├── 기획서_ver3.md
 ├── 아이템_ver3.md
 ├── 시스템 흐름 정리본_ver3.md
-├── 시스템_연결구조_ver2.md         # ⚠️ 검토 중
+├── 시스템_연결구조_ver2.md
 ├── 요구사항_분석서_ver2.md
 ├── DB_ERD_ver4.md
 ├── 프로토콜_ver2.md
 ├── 개발계획서_ver2.md
 ├── SecurityChecklist.md
+├── TestMode.md
 ├── 메디브릿지 목업.pptx
+├── Architecture/
+│   └── MediBridge_Architecture_MVP.pptx   # ⭐ 5대 + 폰 다이어그램 (10 슬라이드)
 ├── Api/                            # REST API 명세서 8종
-│   ├── ApiOverview.md
+│   ├── ApiOverview.md              # v0.4
 │   ├── AuthApi.md
 │   ├── HistoryApi.md
-│   ├── ReportApi.md
-│   ├── MediaApi.md
+│   ├── ReportApi.md                # v0.2 — HTML/PDF
+│   ├── MediaApi.md                 # v0.2 — intent/commit/get_token
 │   ├── SpeechApi.md
-│   ├── PillApi.md
+│   ├── PillApi.md                  # v0.3
 │   └── MonitoringApi.md
 ├── Install/                        # 설치 매뉴얼
+│   ├── InstallIndex.md
+│   ├── MainServerInstall.md        # Drogon + TestMode + Storage 시크릿
+│   ├── DataStorageInstall.md       # ⭐ 신규 — 보관 PC 미니 서버
 │   ├── ClientPcInstall.md
 │   ├── AndroidPhoneSetup.md
-│   └── ...
+│   ├── InferenceServerInstall.md
+│   └── TrainingServerInstall.md
 └── Old/                            # 이전 버전 보관 (날짜 suffix)
     ├── 기획서_ver1_2026-05-06.md
     ├── 기획서_ver2_2026-05-07.md
@@ -115,15 +124,26 @@ Docs/
 
 ## 5. 빠른 참조
 
-### 5.0 메인 서버 시연 환경 띄우기 (TestMode)
+### 5.0 메인 서버 + 보관 PC 시연 환경 띄우기 (TestMode)
 
-PC 부팅 후 두 명령:
-- **WSL/Ubuntu**: `bash MainServer/Scripts/medibridge-up.sh`
-- **Windows 관리자 PS** (WSL 노출 시): `MainServer\Scripts\medibridge-portproxy.ps1`
-- 확인: `http://10.10.10.97:8001/health`
+PC 부팅 후 **WSL Bash 두 줄**:
+```bash
+bash MainServer/Scripts/medibridge-up.sh              # 메인서버 :8001
+bash DataStorageServer/Scripts/datastorage-up.sh      # 보관 PC  :8004
+```
+
+**Windows 관리자 PS** (LAN 노출 — 최초 1회만):
+```powershell
+MainServer\Scripts\medibridge-portproxy.ps1            # 8001 + 8004 한 번에 등록
+```
+
+확인:
+- `http://10.10.10.97:8001/health` (메인서버)
+- `http://10.10.10.97:8004/health` (보관 PC)
 - 시드 계정: `test@medibridge.local` / `test1234`
 
-상세는 [MainServer/README.md "빠른 시작"](../MainServer/README.md) / [Install/MainServerInstall.md](Install/MainServerInstall.md) / [TestMode.md](TestMode.md).
+전체 운영 명령은 [system_prompt.md](system_prompt.md) 정본.
+상세 셋업은 [Install/MainServerInstall.md](Install/MainServerInstall.md) + [Install/DataStorageInstall.md](Install/DataStorageInstall.md) / [TestMode.md](TestMode.md).
 
 ### 5.1 약 식별 흐름 한눈에
 - 사전 등록 (음성·직접 입력) → 식별 범위 5,000종 → N종 축소

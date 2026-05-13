@@ -934,14 +934,72 @@ Fallback 발동: `is_available()==false`, "고품질 음성" 사용자 설정, �
 
 ---
 
-## 17. 데이터 보관 PC (10.10.10.122) ⭐ v3.0 신규
+## 17. 데이터 보관 PC (10.10.10.122) ⭐ v3.1 — Drogon 미니 서버 구현 완료
 
-> 정본: [시스템_연결구조 v2.2 §2.5](시스템_연결구조_ver2.md), [DB ERD v4 photo_storage](DB_ERD_ver4.md)
+> 정본: [시스템_연결구조 v2.2 §2.5](시스템_연결구조_ver2.md), [DB ERD v4.1 photo_storage](DB_ERD_ver4.md), [Api/MediaApi v0.2](Api/MediaApi.md)
 
-- **사진 전용** (음성 원본 X)
-- 컨트롤 평면(메인 서버 — `photo_storage` 메타) ↔ 데이터 평면(직접 PUT/GET) 분리. AWS S3+RDS 패턴
-- 파일명: `<storage_path>/YYYY/MM/DD/<anonymous_id>_<photo_id>.<ext>` (user_id 노출 X)
-- TestMode: `/test/dev_seed/...` prefix (실 파일 X, 메타만 INSERT)
+### 17.1 구성
+- **Drogon C++ 미니 서버** (port 8004) — 메인서버와 동일 스택. 코드: `DataStorageServer/`
+- **사진 전용** (음성 원본 X). 컨트롤 평면(메타·토큰) / 데이터 평면(본체 PUT·GET) 분리 — AWS S3+RDS 패턴
+- 디스크 구조: `<storage_root>/<anonymous_id>/<photo_id>.<ext>` — user_id 노출 0
+- 운영 시 `storage_root = /var/lib/medibridge_storage`. 시연 시 `/tmp/medibridge_storage_smoke`
+
+### 17.2 사진 정상 흐름 — intent → PUT → commit → identify
+
+```
+[클라PC]                    [메인 :8001]                    [보관 PC :8004]            [Vision PC :8003]
+   │                            │                               │                         │
+   │ ① POST /v1/media/intent    │                               │                         │
+   │  {mime,size,purpose}       │                               │                         │
+   │ ──────────────────────────▶│ photo_storage INSERT          │                         │
+   │                            │   (status=PENDING,            │                         │
+   │                            │    expires_at=NOW()+300s)     │                         │
+   │                            │ put_token 발급 (HS256)        │                         │
+   │ ◀──────────────────────────│                               │                         │
+   │  {photo_id, storage_url,   │                               │                         │
+   │   put_token, expires_at}   │                               │                         │
+   │                            │                               │                         │
+   │ ② PUT storage_url          │                               │                         │
+   │  Authorization: put_token  │                               │                         │
+   │  Body: image/jpeg          │                               │                         │
+   │ ────────────────────────────────────────────────────────▶ │ 11가지 검증 통과         │
+   │                            │                               │ atomic write            │
+   │ ◀──── 201 Created ─────────────────────────────────────── │                         │
+   │                            │                               │                         │
+   │ ③ POST /v1/media/commit    │                               │                         │
+   │  {photo_id}                │                               │                         │
+   │ ──────────────────────────▶│ UPDATE status=READY,          │                         │
+   │ ◀──── 200 ─────────────────│        committed_at=NOW()     │                         │
+   │                            │                               │                         │
+   │ ④ POST /v1/pill/identify   │                               │                         │
+   │  {image_request_id}        │                               │                         │
+   │ ──────────────────────────▶│ photo_storage SELECT          │                         │
+   │                            │ get_token 발급                │                         │
+   │                            │ POST /vision/detect_remote ──────────────────────────▶ │
+   │                            │   {photo_id, storage_url,                                 │
+   │                            │    get_token, mime, purpose}                              │
+   │                            │                              │ ◀───── GET storage_url ──│
+   │                            │                              │   Authorization: get_token│
+   │                            │                              │ ────── 200 (image) ─────▶│
+   │                            │                              │                          │ YOLO·OCR
+   │                            │ ◀───── {candidates,                                       │
+   │                            │         confidence_tier} ────────────────────────────────│
+   │                            │ DurQueryEngine 페어 매칭     │                         │
+   │ ◀── 200 IdentifyResponse ──│                              │                         │
+```
+
+### 17.3 보안 — 11가지 검증
+보관 PC `Routers/Photo.cpp` 가 PUT/GET 마다 검증:
+서명 / `iss=medibridge-main` / `aud=datastorage` / `exp>now` / `op=put|get` 일치 / URL `{anon}` ↔ 토큰 `sub` / URL `{photo_id}` ↔ 토큰 `jti` / URL 확장자 ↔ 토큰 `mime` / Content-Type / Content-Length ≤ max / ID 화이트리스트 `[A-Za-z0-9_-]{1,64}`
+
+### 17.4 청소 잡 (PENDING 만료 → EXPIRED)
+- Drogon `app().getLoop()->runEvery(interval, ...)` — 메인서버 부팅 시 등록
+- SQL: `UPDATE photo_storage SET status='EXPIRED' WHERE status='PENDING' AND expires_at<NOW()`
+- 인터벌: `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL` (기본 300s, 0=비활성)
+
+### 17.5 시크릿 분리
+- 메인 JWT 시크릿(`MEDIBRIDGE_JWT_SECRET`) ≠ 보관 PC 토큰 시크릿(`MEDIBRIDGE_STORAGE_SECRET`)
+- 한쪽 유출돼도 다른 쪽 토큰 위조 불가
 
 ---
 
@@ -958,3 +1016,4 @@ LLM PC (10.10.10.120) 동거. `pip install chromadb`. Onboarding 약명 정규�
 | v1.0 | 2026-04-30 | 팀 (3인) | 초안 작성 |
 | v2.0 | 2026-05-06 | 팀 (3인) | ① 본문 그림 안의 Stage 명명 정합성 수정(Stage 0 → Stage 0.5: 의도 분류). ② 식약처 OpenAPI 캐시 정책 단순화 — TTL 30일 정책 폐기, 낱알식별·DUR은 일괄 적재 + 주기 갱신, e약은요는 lazy 캐싱(만료 정책 없음). ③ 음성 입력 흐름 변경 — 안드로이드 S24 폰의 온디바이스 STT(Galaxy AI / `SpeechRecognizer`) 채택, 추론 PC Whisper STT는 확장 fallback으로 분리. ④ GUI ↔ 운용 서버 통신 표기 통일 — "TCP/IP (REST API on HTTP) + 미디어/텍스트 별도 엔드포인트". ⑤ 통신 구간 ③의 표기를 "GUI ↔ 카메라" → "폰 ↔ GUI PC"로 변경 (폰이 카메라+마이크+STT 통합 처리). ⑥ 6.4 STT/TTS 사용 시점 표에 처리 위치(폰 온디바이스) 명시. ⑦ 의도 분류 카테고리에 복약 이력 조회·보고서 출력 추가. ⑧ 11장 면접 답변 메시지에 폰 온디바이스 STT 결정 근거 보강. |
 | v3.0 | 2026-05-07 | 팀 (3인) | **단일 정본화 통합** — §2.1 PC 구성 5대+폰 + IP 매트릭스 (시스템_연결구조 v2.2 흡수), §12 가명화 정책 신규 (DB ERD v4), §13 Onboarding RAG round-trip 신규 (PillApi v0.3), §14 TTS 어댑터 신규, §15 TestMode 신규, §16 Auth 실 구현 (PBKDF2 + HS256 JWT), §17 데이터 보관 PC 신규, §18 ChromaDB 채택. PC 구성도 갱신 (LLM/Vision 분리, 데이터 보관 PC 추가). |
+| v3.1 | 2026-05-13 | 팀 (3인) | **사진 흐름 ⑤+⑥ 구현 완료** — §17 데이터 보관 PC Drogon 미니 서버 (port 8004) + 17.2 정상 시퀀스 (intent → PUT → commit → identify with Vision GET) + 17.3 11가지 검증 + 17.4 청소 잡 + 17.5 시크릿 분리. 신규 엔드포인트: `POST /v1/media/{intent, commit, get_token}` (메인) / `PUT·GET /storage/photos/{anon}/{photo_id}.{ext}` (보관). photo_storage 컬럼 추가 (`status`, `expires_at`, `committed_at`). 메인 코드: Report PDF (wkhtmltopdf) / DurQueryEngine 양방향 페어 / PdmaApiClient e약은요 lazy / Config JSON 파싱 (jsoncpp) / import_pdma.py CSV 적재. |
