@@ -9,6 +9,9 @@
 #include "../Database/Connection.h"
 #include "../Config.h"
 #include "../Services/Auth/JwtIssuer.h"
+#include "../Services/Media/StorageTokenIssuer.h"
+#include "../Services/Inference/InferenceClient.h"
+#include "../Services/Dur/DurQueryEngine.h"
 #include "../Utils/TimeUtil.h"
 
 #include <drogon/HttpResponse.h>
@@ -25,7 +28,10 @@
 
 using medibridge::database::Connection;
 using medibridge::Config;
-namespace AuthSvc = medibridge::services::auth;
+namespace AuthSvc  = medibridge::services::auth;
+namespace MediaSvc = medibridge::services::media;
+namespace InferSvc = medibridge::services::inference;
+namespace DurSvc   = medibridge::services::dur;
 namespace orm = drogon::orm;
 
 namespace medibridge::routers {
@@ -126,8 +132,159 @@ void Pill::handle_identify(const drogon::HttpRequestPtr& req,
     }
 
     if (!Config::instance().test_mode()) {
-        // TODO (운영 모드): InferenceClient::vision().detect_and_analyze() 호출
-        callback(error_response(drogon::k501NotImplemented, "NOT_IMPLEMENTED", "운영 모드 추론은 아직 미구현입니다."));
+        // =====================================================
+        // 운영 모드 — Vision PC 비동기 호출
+        // =====================================================
+        // 흐름:
+        //   1) image_request_id 로 photo_storage row 조회 (anon 권한 확인)
+        //   2) status='READY' 확인
+        //   3) GET 토큰 발급 (op=get, TTL 300s)
+        //   4) Vision PC 에 detect_pills_remote 호출 (storage_url + get_token + mime)
+        //   5) 응답 받아 IdentifyResponse 로 변환
+        //
+        // Vision PC 측 미가동 시: detect_pills_remote 가 타임아웃 → 502 반환.
+        // =====================================================
+        auto db = Connection::instance().client();
+        if (!db) {
+            callback(error_response(drogon::k503ServiceUnavailable, "DB_UNAVAILABLE", "DB 미준비."));
+            return;
+        }
+
+        std::string photo_id, mime_type, storage_path, status;
+        try {
+            auto rows = db->execSqlSync(
+                "SELECT photo_id, mime_type, storage_path, status "
+                "  FROM photo_storage "
+                " WHERE request_id = ? AND anonymous_id = ? "
+                " ORDER BY uploaded_at DESC LIMIT 1",
+                reqobj.image_request_id, *anon_opt);
+            if (rows.empty()) {
+                callback(error_response(drogon::k404NotFound, "PHOTO_NOT_FOUND",
+                                        "image_request_id 에 대응하는 사진이 없습니다."));
+                return;
+            }
+            photo_id     = rows[0]["photo_id"].as<std::string>();
+            mime_type    = rows[0]["mime_type"].as<std::string>();
+            storage_path = rows[0]["storage_path"].as<std::string>();
+            status       = rows[0]["status"].as<std::string>();
+        } catch (const orm::DrogonDbException& e) {
+            callback(error_response(drogon::k500InternalServerError, "DB_ERROR", e.base().what()));
+            return;
+        }
+
+        if (status != "READY") {
+            callback(error_response(drogon::k409Conflict, "PHOTO_NOT_READY",
+                                    "사진 상태(" + status + ")가 READY 가 아닙니다. PUT/commit 먼저."));
+            return;
+        }
+
+        // GET 토큰 발급
+        const int ttl = Config::instance().storage_token_ttl_seconds();
+        MediaSvc::StorageTokenClaims claims;
+        claims.anonymous_id = *anon_opt;
+        claims.photo_id     = photo_id;
+        claims.operation    = "get";
+        claims.mime_type    = mime_type;
+        claims.max_bytes    = Config::instance().storage_max_bytes();
+        const std::string get_token = MediaSvc::StorageTokenIssuer::issue(claims, ttl);
+
+        // storage_url 재구성 — storage_path: "/photos/<anon>/<photo>.<ext>"
+        //                  보관 PC 라우트: "/storage/photos/<anon>/<photo>.<ext>"
+        std::string sp = storage_path;
+        if (sp.rfind("/photos/", 0) == 0) sp = sp.substr(7);
+        const std::string storage_url =
+            Config::instance().storage_base_url() + "/storage/photos" + sp;
+
+        // Vision PC 호출 — 비동기. include_dur_check 처리는 응답 후.
+        InferSvc::VisionInferenceClient::RemoteDetectParams p;
+        p.photo_id    = photo_id;
+        p.storage_url = storage_url;
+        p.get_token   = get_token;
+        p.mime        = mime_type;
+        p.purpose     = "IDENTIFY";
+
+        const std::string image_req_id = reqobj.image_request_id;
+        const bool include_dur = reqobj.include_dur_check;
+        const std::string anon_captured = *anon_opt;
+
+        InferSvc::InferenceClient::instance().vision().detect_pills_remote(
+            p,
+            [callback = std::move(callback), image_req_id, include_dur, anon_captured]
+            (const Json::Value& vision_resp, int sc) mutable
+            {
+                if (sc < 200 || sc >= 300) {
+                    // Vision PC 미응답·에러 — 502
+                    Json::Value body, err;
+                    err["code"]    = "VISION_UPSTREAM_ERROR";
+                    err["message"] = "Vision PC 추론 호출 실패 (status=" + std::to_string(sc) + ").";
+                    body["error"]  = err;
+                    auto resp = drogon::HttpResponse::newHttpJsonResponse(body);
+                    resp->setStatusCode(drogon::k502BadGateway);
+                    callback(resp);
+                    return;
+                }
+
+                // Vision PC 응답 schema (계약):
+                //   {
+                //     "candidates": [
+                //       {"item_code","drug_name","confidence","match_keys":[…]}, ...
+                //     ],
+                //     "confidence_tier": "HIGH" | "MEDIUM" | "LOW"
+                //   }
+                schemas::IdentifyResponse resp;
+                resp.request_id      = image_req_id;
+                resp.confidence_tier = schemas::confidence_tier_from_score(
+                    vision_resp.get("candidates", Json::Value(Json::arrayValue))
+                               .size() > 0
+                        ? vision_resp["candidates"][0].get("confidence", 0.0).asDouble()
+                        : 0.0);
+
+                for (const auto& jc : vision_resp.get("candidates", Json::Value(Json::arrayValue))) {
+                    schemas::PillCandidate c;
+                    c.item_code   = jc.get("item_code", "").asString();
+                    c.drug_name   = jc.get("drug_name", "").asString();
+                    c.confidence  = jc.get("confidence", 0.0).asDouble();
+                    c.in_user_pool = false;     // DUR 단계에서 풀 매칭 → 별도 채움
+                    for (const auto& mk : jc.get("match_keys", Json::Value(Json::arrayValue))) {
+                        c.match_keys.push_back(mk.asString());
+                    }
+                    resp.candidates.push_back(std::move(c));
+                }
+
+                resp.guidance.tts_text = resp.candidates.empty()
+                    ? "약을 식별하지 못했어요. 다시 촬영해 주세요."
+                    : "식별 결과를 화면에 표시했어요.";
+                resp.guidance.fallback_action = resp.candidates.empty()
+                    ? schemas::FallbackAction::RECAPTURE : schemas::FallbackAction::NONE;
+
+                // DUR 페어 매칭 — 식별된 후보 + 사용자 약 풀 사이 위험 조회.
+                // ⚠ LLM 미사용, 식약처 본문 그대로 인용 (DurQueryEngine 가 보증).
+                if (include_dur && !resp.candidates.empty()) {
+                    auto db2 = Connection::instance().client();
+                    std::vector<std::string> codes;
+                    codes.push_back(resp.candidates.front().item_code);  // 최상위 후보
+                    if (db2) {
+                        try {
+                            auto pool_rows = db2->execSqlSync(
+                                "SELECT item_code FROM user_medication_pool "
+                                " WHERE anonymous_id = ? AND is_active = TRUE",
+                                anon_captured);
+                            for (const auto& pr : pool_rows) {
+                                codes.push_back(pr["item_code"].as<std::string>());
+                            }
+                        } catch (const orm::DrogonDbException&) {
+                            // 사용자 풀 조회 실패는 DUR 결과만 비우고 진행
+                        }
+                    }
+                    resp.dur_check = DurSvc::DurQueryEngine::check_combination(codes);
+                } else {
+                    resp.dur_check.result     = "no_risk_found";
+                    resp.dur_check.checked_at = utils::current_iso8601_utc();
+                }
+
+                auto http = drogon::HttpResponse::newHttpJsonResponse(resp.to_json());
+                callback(http);
+            });
         return;
     }
 

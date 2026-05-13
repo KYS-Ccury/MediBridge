@@ -43,6 +43,10 @@ fi
 export MEDIBRIDGE_DB_PASSWORD='smoke_pw_change_me'
 export MEDIBRIDGE_TEST_MODE='true'
 export MEDIBRIDGE_JWT_SECRET='at_least_32_bytes_long_secret_for_smoke_test_xx'
+export MEDIBRIDGE_STORAGE_SECRET='at_least_32_bytes_long_storage_secret_xxx_yy'
+export MEDIBRIDGE_STORAGE_BASE_URL='http://10.10.10.97:8004'
+# 시연용: 청소 잡을 10초 간격으로 (운영 기본은 300초). 0 이면 비활성.
+export MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL='10'
 export MEDIBRIDGE_ENV='development'
 
 cd "${ROOT}"

@@ -51,6 +51,7 @@ set(SOURCES
     Services/Auth/JwtIssuer.cpp
     Services/Auth/UserManager.cpp
     Services/Auth/Authenticator.cpp
+    Services/Media/StorageTokenIssuer.cpp
     Services/Dur/DurQueryEngine.cpp
     Services/Dur/DurMessageFormatter.cpp
     Services/Inference/InferenceClientCommon.cpp
@@ -94,6 +95,7 @@ set(HEADERS
     Services/Auth/JwtIssuer.h
     Services/Auth/UserManager.h
     Services/Auth/Authenticator.h
+    Services/Media/StorageTokenIssuer.h
     Services/Dur/DurQueryEngine.h
     Services/Dur/DurMessageFormatter.h
     Services/Inference/InferenceClientCommon.h

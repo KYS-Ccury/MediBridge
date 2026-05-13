@@ -1,0 +1,33 @@
+# =====================================================
+# MediBridge POC — 알약 식별 가능성 검증 의존성
+# =====================================================
+# Python 3.10 또는 3.11 권장 (PaddleOCR 호환).
+# CPU / GPU 분기는 README §3.4 참조.
+# =====================================================
+
+# ----- OpenCV (검출·색·모양) -----
+opencv-python>=4.10
+# numpy: paddlepaddle 2.6.x 는 numpy<2 만 호환. paddlepaddle 3.0+ 는 numpy 2.x 도 OK.
+# Python 3.10/3.11 + paddle 2.6.x 사용 시 → numpy<2.0 으로 고정
+# Python 3.12      + paddle 3.0+   사용 시 → 제약 풀어도 OK (둘 다 정상 동작)
+numpy>=1.24
+
+# ----- PaddleOCR (각인 OCR) -----
+# paddlepaddle 은 README §3.3/§3.4 에서 별도 설치 (CPU/GPU + Python 버전 분기).
+# Python 3.12 사용 시 — 본 paddleocr 2.7.x 는 paddle 3.0+ 와 함께 작동 (호환성 검증됨).
+paddleocr>=2.7,<3.0
+shapely>=2.0
+pyclipper>=1.3
+imgaug>=0.4.0
+lmdb>=1.4
+
+# ----- 이미지 IO·보조 -----
+pillow>=10.0
+matplotlib>=3.7      # 결과 시각화·디버깅용
+scikit-image>=0.21   # 영상 처리 보조
+
+# ----- (선택) YOLO 사용 시 — 사전학습으로는 알약 검출 어려워 POC 단계 비활성. -----
+# 운영 단계에서 AI Hub 데이터로 fine-tuning 시 활성화:
+# ultralytics>=8.3
+# torch       # README §3.4 의 CUDA-aware 명령으로 별도 설치 권장
+# torchvision

@@ -1,0 +1,29 @@
+# venv (절대 커밋 X)
+venv/
+.venv/
+env/
+
+# 결과·캐시
+results/*.png
+results/*.jpg
+results/*.json
+results/*.html
+eval_results/*.json
+eval_results/*.png
+eval_results/*.jpg
+__pycache__/
+*.pyc
+
+# 모델 가중치 (큼, 별도 관리)
+*.pt
+*.onnx
+*.pb
+
+# 사용자가 넣는 샘플 사진 (개인정보 가능)
+samples/*.jpg
+samples/*.png
+samples/*.jpeg
+samples/*.JPG
+samples/*.PNG
+samples/*.JPEG
+!samples/README.md

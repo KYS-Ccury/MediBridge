@@ -48,6 +48,18 @@ public:
     std::string jwt_secret() const;        // HS256 서명 시크릿
     int         jwt_expire_seconds() const;
 
+    // ----- 데이터 보관 PC (Storage) — ⑤+⑥ 통신 -----
+    /// 보관 PC 베이스 URL — 클라/Vision PC 가 직접 PUT/GET (e.g., http://10.10.10.122:8004)
+    std::string storage_base_url() const;
+    /// 메인 ↔ 보관 PC 공유 시크릿 (PUT/GET 토큰 HMAC-SHA256). JWT 시크릿과 별개.
+    std::string storage_secret() const;
+    /// PUT/GET 토큰 TTL (기본 300초 = 5분)
+    int         storage_token_ttl_seconds() const;
+    /// 업로드 허용 최대 바이트 (기본 10MB)
+    long        storage_max_bytes() const;
+    /// PENDING 청소 잡 인터벌 (초). 0 = 비활성. 기본 300 (5분).
+    int         storage_cleanup_interval_seconds() const;
+
     // ----- TestMode (Docs/TestMode.md) -----
     /// true 면 추론 서버·데이터 보관 PC 호출을 우회하고 DB seed 데이터로 응답.
     /// production 환경(MEDIBRIDGE_ENV=production)에서는 강제로 false.
@@ -58,6 +70,11 @@ private:
     ~Config() = default;
     Config(const Config&) = delete;
     Config& operator=(const Config&) = delete;
+
+    /// load_from_file 단계별 헬퍼 (우선순위: JSON < 환경변수 < 검증)
+    void apply_json_file(const std::string& path);
+    void apply_env_vars();
+    void validate();
 
     uint16_t    server_port_           = 8001;
     int         drogon_thread_num_     = 0;       // 0 = CPU 코어 수
@@ -81,6 +98,13 @@ private:
 
     std::string jwt_secret_            = "CHANGE_ME_IN_PRODUCTION";
     int         jwt_expire_seconds_    = 86400;   // 24시간
+
+    // ----- 데이터 보관 PC -----
+    std::string storage_base_url_         = "http://10.10.10.122:8004";
+    std::string storage_secret_           = "CHANGE_ME_STORAGE_SECRET";
+    int         storage_token_ttl_seconds_ = 300;        // 5분
+    long        storage_max_bytes_         = 10L * 1024L * 1024L;  // 10MB
+    int         storage_cleanup_interval_seconds_ = 300; // 5분 — PENDING → EXPIRED 청소
 
     bool        test_mode_             = false;   // MEDIBRIDGE_TEST_MODE 로 활성화
 };

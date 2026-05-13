@@ -19,6 +19,11 @@ echo "[smoke] 2) 스키마 적용"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mysql -u root ${DB_NAME} < "${SCRIPT_DIR}/../Database/Migrations/001_init_schema.sql"
 
+echo "[smoke] 2-b) 마이그레이션 002 (photo_storage intent 컬럼)"
+# 002 는 ALTER 라 멱등이 아님 — 이미 적용된 경우 안전하게 무시
+mysql -u root ${DB_NAME} < "${SCRIPT_DIR}/../Database/Migrations/002_photo_storage_intent.sql" 2>/dev/null \
+    || echo "[smoke]   (이미 적용됨 또는 컬럼 중복 — 무시)"
+
 echo "[smoke] 3) 시드 적용 (TestMode 용 더미)"
 mysql -u root ${DB_NAME} < "${SCRIPT_DIR}/../Database/Seeds/dev_seed.sql"
 
@@ -33,3 +38,5 @@ echo "[smoke] DONE — 메인서버 실행 시 다음 환경변수 사용:"
 echo "  MEDIBRIDGE_DB_PASSWORD='${DB_PASS}'"
 echo "  MEDIBRIDGE_TEST_MODE='true'"
 echo "  MEDIBRIDGE_JWT_SECRET='at_least_32_bytes_long_secret_for_smoke_test_xx'"
+echo "  MEDIBRIDGE_STORAGE_SECRET='at_least_32_bytes_long_storage_secret_xxx_yy'"
+echo "  MEDIBRIDGE_STORAGE_BASE_URL='http://10.10.10.122:8004'   # 데이터 보관 PC"

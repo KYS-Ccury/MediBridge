@@ -1,0 +1,41 @@
+{
+    "_comment": "메디브릿지 메인서버 설정 샘플 — Main.cpp 가 'config.json' 으로 로드합니다.",
+    "_secrets": "비밀 정보(db.password / jwt.secret / storage.secret / pdma.service_key)는 본 파일에 절대 넣지 마세요. 환경변수 전용입니다 (보안 정책).",
+    "_priority": "기본값(Config.h) < config.json < 환경변수. 환경변수가 항상 최우선.",
+
+    "server": {
+        "port": 8001,
+        "thread_num": 0,
+        "worker_pool_size": 4
+    },
+
+    "db": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "user": "medibridge_app",
+        "name": "medibridge",
+        "pool_size": 10
+    },
+
+    "inference": {
+        "llm_base":    "http://10.10.10.120:8002",
+        "vision_base": "http://10.10.10.128:8003",
+        "request_timeout_ms": 5000
+    },
+
+    "pdma": {
+        "api_base_url": "https://apis.data.go.kr"
+    },
+
+    "jwt": {
+        "expire_seconds": 86400
+    },
+
+    "storage": {
+        "base_url":          "http://10.10.10.122:8004",
+        "token_ttl_seconds": 300,
+        "max_bytes":         10485760
+    },
+
+    "test_mode": false
+}

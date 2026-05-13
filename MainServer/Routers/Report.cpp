@@ -8,6 +8,9 @@
 #include "../Schemas/ReportSchema.h"
 #include "../Database/Connection.h"
 #include "../Services/Auth/JwtIssuer.h"
+#include "../Services/Report/ReportHtmlRenderer.h"
+#include "../Services/Report/ReportPdfRenderer.h"
+#include "../Threading/WorkerPool.h"
 #include "../Utils/TimeUtil.h"
 
 #include <drogon/HttpResponse.h>
@@ -200,29 +203,46 @@ void Report::handle_generate(const drogon::HttpRequestPtr& req,
         }
 
         if (format == "html") {
-            std::ostringstream html;
-            html << "<!DOCTYPE html><html><head><meta charset='utf-8'><title>메디브릿지 보고서</title></head><body>";
-            html << "<h1>메디브릿지 복약 보고서</h1>";
-            html << "<p>기간: " << resp.period.from_date << " ~ " << resp.period.to_date << "</p>";
-            html << "<h2>총 복용 " << resp.consumed_summary.total_intakes << "회</h2>";
-            html << "<table border='1' cellpadding='6'><tr><th>일시</th><th>약</th><th>개수</th><th>메모</th></tr>";
-            for (const auto& e : resp.intake_logs) {
-                html << "<tr><td>" << e.intake_datetime << "</td><td>" << e.drug_name
-                     << "</td><td>" << e.quantity << "</td><td>" << e.memo << "</td></tr>";
-            }
-            html << "</table>";
-            html << "<h2>식약처 e약은요 인용 — 약사·의사 상담을 권유드립니다.</h2><ul>";
-            for (const auto& q : resp.side_effect_quotes) {
-                html << "<li><b>" << q.drug_name << "</b><br/>주의: " << q.caution_text
-                     << "<br/>부작용: " << q.side_effect_text << "</li>";
-            }
-            html << "</ul></body></html>";
+            const auto html_body =
+                medibridge::services::report::ReportHtmlRenderer::render(resp);
             auto http = drogon::HttpResponse::newHttpResponse();
             http->setStatusCode(drogon::k200OK);
             http->setContentTypeCode(drogon::CT_TEXT_HTML);
-            http->setBody(html.str());
+            http->setBody(html_body);
             callback(http);
             return;
+        }
+        if (format == "pdf") {
+            // HTML 먼저 생성 후, PDF 변환은 WorkerPool 에 위임 (Drogon 핸들러 스레드 차단 방지)
+            const auto html_body =
+                medibridge::services::report::ReportHtmlRenderer::render(resp);
+            const auto report_id = resp.report_id;
+
+            medibridge::threading::WorkerPool::instance().submit(
+                [html_body, report_id, callback]() mutable {
+                    auto pdf_bytes =
+                        medibridge::services::report::ReportPdfRenderer::render(html_body);
+                    if (pdf_bytes.empty()) {
+                        Json::Value body, err;
+                        err["code"]    = "PDF_RENDER_FAILED";
+                        err["message"] = "PDF 변환 실패 — wkhtmltopdf 미설치 또는 변환 오류.";
+                        body["error"] = err;
+                        auto http = drogon::HttpResponse::newHttpJsonResponse(body);
+                        http->setStatusCode(drogon::k500InternalServerError);
+                        callback(http);
+                        return;
+                    }
+                    auto http = drogon::HttpResponse::newHttpResponse();
+                    http->setStatusCode(drogon::k200OK);
+                    http->setContentTypeString("application/pdf");
+                    http->addHeader("Content-Disposition",
+                                    "inline; filename=\"medibridge_" + report_id + ".pdf\"");
+                    http->setBody(std::string(
+                        reinterpret_cast<const char*>(pdf_bytes.data()),
+                        pdf_bytes.size()));
+                    callback(http);
+                });
+            return;   // 응답은 워커 콜백에서
         }
         // 기본 JSON
         callback(drogon::HttpResponse::newHttpJsonResponse(resp.to_json()));

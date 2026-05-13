@@ -1,0 +1,5 @@
+ITEM_SEQ,ITEM_NAME,ENTP_NAME,DRUG_SHAPE,COLOR_CLASS1,COLOR_CLASS2,PRINT_FRONT,PRINT_BACK,ITEM_IMAGE,CLASS_NO,CLASS_NAME
+199400001,타이레놀정500mg(실데이터샘플),한국얀센,장방형,흰색,흰색,TYL,500,https://nedrug.mfds.go.kr/img/199400001.jpg,01140,"해열, 진통, 소염제"
+199400002,게보린정(실데이터샘플),삼진제약,원형,흰색,흰색,GB,,https://nedrug.mfds.go.kr/img/199400002.jpg,01140,"해열, 진통, 소염제"
+199500003,아스피린프로텍트정100mg(실데이터샘플),바이엘코리아,원형,주황,주황,BAY,A100,https://nedrug.mfds.go.kr/img/199500003.jpg,01140,"해열, 진통, 소염제"
+200100007,훼스탈플러스정(실데이터샘플),한독,원형,연두,연두,FE,+,https://nedrug.mfds.go.kr/img/200100007.jpg,02300,소화제

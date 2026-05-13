@@ -10,6 +10,8 @@
 // =====================================================
 
 #include <drogon/drogon.h>
+#include <drogon/orm/Result.h>
+#include <drogon/orm/Exception.h>
 #include <iostream>
 
 #include "Config.h"
@@ -90,6 +92,43 @@ int main(int argc, char *argv[])
                       << std::endl;
             std::cout.flush();
         });
+
+    // =====================================================
+    // 4-2. 청소 잡 — photo_storage PENDING 만료 row 를 EXPIRED 로 마킹
+    // =====================================================
+    // intent → PUT → commit 흐름이 중간에 끊겼을 때 (네트워크 단절·앱 크래시 등)
+    // PENDING 상태로 남은 row 를 주기적으로 정리. 토큰은 어차피 exp 검증으로 거부되니
+    // 보안에는 영향 없지만, DB 누적 방지 + 운영 가시성 차원.
+    //
+    // 인터벌: Config::storage_cleanup_interval_seconds (기본 300s, 0 이면 비활성)
+    {
+        const int interval = config.storage_cleanup_interval_seconds();
+        if (interval > 0) {
+            drogon::app().getLoop()->runEvery(static_cast<double>(interval),
+                []() {
+                    auto db = medibridge::database::Connection::instance().client();
+                    if (!db) return;
+                    db->execSqlAsync(
+                        "UPDATE photo_storage SET status='EXPIRED' "
+                        " WHERE status='PENDING' AND expires_at < NOW()",
+                        [](const drogon::orm::Result& r) {
+                            const auto n = r.affectedRows();
+                            if (n > 0) {
+                                std::cout << "[Cleanup] PENDING → EXPIRED 마킹: "
+                                          << n << " 행" << std::endl;
+                            }
+                        },
+                        [](const drogon::orm::DrogonDbException& e) {
+                            std::cerr << "[Cleanup] SQL error: "
+                                      << e.base().what() << std::endl;
+                        });
+                });
+            std::cout << "[Main]   - 청소 잡 등록 — " << interval
+                      << "초 간격 (PENDING expires_at 경과 → EXPIRED)" << std::endl;
+        } else {
+            std::cout << "[Main]   - 청소 잡 비활성 (interval=0)" << std::endl;
+        }
+    }
 
     // 5. 이벤트 루프 진입 (블록)
     drogon::app().run();

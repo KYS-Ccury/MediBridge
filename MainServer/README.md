@@ -76,6 +76,17 @@ cd C:\Users\LMS\Desktop\Project\MediBridge\MainServer\Scripts
 
 → 시드 약 풀 4건이 `test_user_001` 에 이미 등록되어 있음 (타이레놀500, 이부프로펜200, 베아제, 아스피린).
 
+### 설정 우선순위
+
+```
+Config.h 멤버 기본값  <  config.json  <  환경변수
+                                       (항상 최우선)
+```
+
+- `config.json` 은 선택적. 없으면 환경변수+기본값만 사용 (자동 폴백).
+- 깨진 JSON 도 안전하게 폴백 (파싱 실패 경고만 출력).
+- 시크릿 (`db.password` / `jwt.secret` / `storage.secret` / `pdma.service_key`) 은 **config.json 에 절대 넣지 말 것** — 환경변수 전용 강제 정책. 샘플은 `config.sample.json` 참조.
+
 ### 환경변수
 
 | 이름 | 기본값 | 비고 |
@@ -84,6 +95,10 @@ cd C:\Users\LMS\Desktop\Project\MediBridge\MainServer\Scripts
 | `MEDIBRIDGE_DB_PASSWORD` | (없음) | medibridge_app 계정 비밀번호 |
 | `MEDIBRIDGE_JWT_SECRET` | (없음) | 32 바이트 이상 권장 |
 | `MEDIBRIDGE_PDMA_KEY` | (없음) | 식약처 OpenAPI 키 (운영 모드) |
+| `MEDIBRIDGE_STORAGE_BASE_URL` | `http://10.10.10.122:8004` | 데이터 보관 PC URL (⑤+⑥) |
+| `MEDIBRIDGE_STORAGE_SECRET` | (없음) | 보관 PC PUT/GET 토큰 HMAC 시크릿. **JWT 와 다른 32+ 바이트 시크릿** |
+| `MEDIBRIDGE_STORAGE_TOKEN_TTL` | `300` | PUT/GET 토큰 만료 (초) |
+| `MEDIBRIDGE_STORAGE_MAX_BYTES` | `10485760` | 업로드 허용 최대 바이트 (10MB) |
 | `MEDIBRIDGE_ENV` | `development` | `production` 시 보안 검증 강화 |
 
 ### 포트·베이스 URL
