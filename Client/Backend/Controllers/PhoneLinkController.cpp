@@ -30,16 +30,18 @@ QString PhoneLinkController::last_error() const { return last_error_; }
 
 void PhoneLinkController::retry_connect()
 {
-    // TODO (영역 C 분담):
-    //   monitor_->refresh_now();   // 즉시 1회 폴링
-    qInfo() << "[PhoneLinkController] retry_connect 요청";
+    qInfo() << "[PhoneLinkController] retry_connect — adb device 즉시 폴링";
+    if (monitor_) {
+        monitor_->refresh_now();
+    }
 }
 
 void PhoneLinkController::retry_reverse()
 {
-    // TODO:
-    //   if (reverse_manager_) reverse_manager_->setup_reverse();
-    qInfo() << "[PhoneLinkController] retry_reverse 요청";
+    qInfo() << "[PhoneLinkController] retry_reverse — adb reverse 재등록";
+    if (reverse_manager_) {
+        reverse_manager_->setup_reverse();
+    }
 }
 
 void PhoneLinkController::on_device_changed(const QString& serial, const QString& state)
@@ -59,11 +61,11 @@ void PhoneLinkController::on_device_changed(const QString& serial, const QString
 
     // Q4=C: 자동 reverse 셋업 (연결 감지 시)
     if (is_connected_ && !was_connected && reverse_manager_) {
-        // TODO: reverse_manager_->setup_reverse();
+        reverse_manager_->setup_reverse();
         reverse_active_ = true;
         emit reverse_active_changed();
         emit phone_ready();
-        qInfo() << "[PhoneLinkController] 폰 연결 감지 → adb reverse 자동 셋업";
+        qInfo() << "[PhoneLinkController] 폰 연결 감지 → adb reverse 자동 셋업 시작";
     } else if (!is_connected_ && was_connected) {
         reverse_active_ = false;
         emit reverse_active_changed();

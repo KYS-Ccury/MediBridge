@@ -3,6 +3,7 @@
 #include "PhoneCaptureService.h"
 
 #include <QLoggingCategory>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -155,31 +156,78 @@ void PillController::on_capture_failed(const QString& error_message)
     emit identify_failed(last_error_);
 }
 
+// =====================================================
+// handle_identify_response — /v1/pill/identify 응답 파싱
+// =====================================================
+// 응답 schema (PillApi v0.3):
+//   {
+//     "request_id": "req_xxx",
+//     "candidates": [{ item_code, drug_name, confidence, match_keys[], in_user_pool,
+//                      classification_name, efficacy_text, usage_text }],
+//     "confidence_tier": "HIGH|MEDIUM|LOW",
+//     "guidance": { tts_text, fallback_action, ... },
+//     "dur_check": { result: "no_risk_found|risk_found", details[] }
+//   }
+// =====================================================
 void PillController::handle_identify_response(const QByteArray& response, int status_code)
 {
-    Q_UNUSED(response);
     set_loading(false);
 
-    // MainServer TODO 단계엔 501 반환 가능 — 그때도 흐름 검증 위해 임시 결과 채움
     if (status_code != 200 && status_code != 202) {
-        set_error(QStringLiteral("UPLOAD_FAILED_") + QString::number(status_code));
+        // 에러 envelope 에서 code 추출
+        QString code = QStringLiteral("IDENTIFY_FAILED_") + QString::number(status_code);
+        const auto err_doc = QJsonDocument::fromJson(response);
+        if (err_doc.isObject() && err_doc.object().contains("error")) {
+            code = err_doc.object().value("error").toObject()
+                          .value("code").toString(code);
+        }
+        set_error(code);
         emit identify_failed(last_error_);
+        qWarning() << "[PillController] identify 실패 status=" << status_code
+                   << "code=" << code;
         return;
     }
 
-    // TODO (영역 C 분담):
-    //   1. JSON 파싱 → request_id, candidates[], confidence_tier, guidance.tts_text, dur_check
-    //   2. ListModel 갱신 (PillCandidateListModel, DurDetailListModel)
-    //   3. 본 임시값 제거
-    confidence_tier_ = "MEDIUM";
-    tts_text_ = QStringLiteral("응답 수신 완료 (응답 파싱 TODO)");
-    dur_result_ = "no_risk_found";
-    last_request_id_ = QStringLiteral("req_pending");
+    const auto doc = QJsonDocument::fromJson(response);
+    if (!doc.isObject()) {
+        set_error("IDENTIFY_INVALID_JSON");
+        emit identify_failed(last_error_);
+        return;
+    }
+    const auto root = doc.object();
 
+    // 기본 필드
+    const QString req_id = root.value("request_id").toString();
+    if (!req_id.isEmpty()) {
+        last_request_id_ = req_id;
+        emit last_request_id_changed();
+    }
+
+    // confidence_tier
+    confidence_tier_ = root.value("confidence_tier").toString("MEDIUM");
     emit confidence_tier_changed();
+
+    // guidance.tts_text
+    const auto guidance = root.value("guidance").toObject();
+    tts_text_ = guidance.value("tts_text").toString();
+    if (tts_text_.isEmpty()) {
+        tts_text_ = QStringLiteral("식별 결과를 확인해주세요.");
+    }
     emit tts_text_changed();
+
+    // dur_check
+    const auto dur = root.value("dur_check").toObject();
+    dur_result_ = dur.value("result").toString("no_risk_found");
     emit dur_result_changed();
-    emit last_request_id_changed();
+
+    // 후보 수 로그
+    const auto cands = root.value("candidates").toArray();
+    qInfo().nospace() << "[PillController] identify OK — candidates=" << cands.size()
+                      << " tier=" << confidence_tier_
+                      << " dur=" << dur_result_;
+
+    // TODO Phase 2-B: PillCandidateListModel / DurDetailListModel 갱신
+
     emit identify_succeeded();
 }
 
@@ -203,19 +251,42 @@ void PillController::identify(const QString& image_request_id,
 // =====================================================
 // 약 풀 CRUD
 // =====================================================
+// =====================================================
+// load_pool — /v1/pill/pool 응답 파싱
+// =====================================================
+// 응답 schema:
+//   { "items": [{ pool_id, item_code, drug_name, reg_method, is_active,
+//                 user_category, classification_name, created_at }],
+//     "total_count": N }
+// =====================================================
 void PillController::load_pool(bool include_inactive)
 {
     set_loading(true);
     api_client_->pill().get_pool(include_inactive,
         [this](const QByteArray& response, int status_code) {
-            Q_UNUSED(response);
             set_loading(false);
             if (status_code != 200) {
-                set_error("POOL_LOAD_FAILED");
+                QString code = "POOL_LOAD_FAILED";
+                const auto err_doc = QJsonDocument::fromJson(response);
+                if (err_doc.isObject() && err_doc.object().contains("error")) {
+                    code = err_doc.object().value("error").toObject()
+                                  .value("code").toString(code);
+                }
+                set_error(code);
                 emit pool_load_failed(last_error_);
                 return;
             }
-            // TODO: PoolItemListModel 에 데이터 채우기
+            const auto doc = QJsonDocument::fromJson(response);
+            if (!doc.isObject()) {
+                set_error("POOL_INVALID_JSON");
+                emit pool_load_failed(last_error_);
+                return;
+            }
+            const auto items = doc.object().value("items").toArray();
+            const int total  = doc.object().value("total_count").toInt(items.size());
+            qInfo().nospace() << "[PillController] pool 로드 OK — items=" << items.size()
+                              << " total=" << total;
+            // TODO Phase 2-B: PoolItemListModel 갱신
             emit pool_loaded();
         });
 }

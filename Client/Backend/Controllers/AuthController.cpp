@@ -99,9 +99,19 @@ void AuthController::signup(const QString& email,
             set_loading(false);
 
             if (status_code != 201) {
-                // TODO: error_code 파싱
-                set_error("SIGNUP_FAILED");
+                // 에러 envelope 에서 code 추출
+                QString code = "SIGNUP_FAILED";
+                const auto doc = QJsonDocument::fromJson(response);
+                if (status_code == 0) {
+                    code = "NETWORK_ERROR";
+                } else if (doc.isObject() && doc.object().contains("error")) {
+                    code = doc.object().value("error").toObject()
+                                       .value("code").toString(code);
+                }
+                set_error(code);
                 emit signup_failed(last_error_);
+                qWarning() << "[AuthController] 회원가입 실패 status=" << status_code
+                           << "code=" << code;
                 return;
             }
 
