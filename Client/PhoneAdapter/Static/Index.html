@@ -160,25 +160,23 @@
             log(`✓ 사진 선택됨: ${file.name} (${Math.round(file.size / 1024)} KB)`);
         });
 
-        // ---------- 사진 전송 ----------
+        // ---------- 사진 전송 (raw binary) ----------
+        // multipart 대신 raw 바이너리로 보냄 → PC PhoneServer 측 파싱 단순화.
+        // Content-Type 헤더로 mime 전달. PC 가 받으면 새 사진 흐름 (intent → PUT → commit) 트리거.
         send_image_btn.addEventListener('click', async () => {
             const file = image_input.files[0];
             if (!file) return;
 
-            // multipart/form-data 구성
-            const form = new FormData();
-            form.append('image', file);
-            form.append('intent_hint', 'identify');
-
             try {
+                const buf = await file.arrayBuffer();
                 const res = await fetch(`${BASE_URL}/v1/media/image`, {
                     method: 'POST',
-                    body: form
+                    headers: { 'Content-Type': file.type || 'image/jpeg' },
+                    body: buf
                 });
-                if (res.ok) {
-                    const data = await res.json();
+                if (res.ok || res.status === 202) {
+                    const data = await res.json().catch(() => ({}));
                     log(`✓ 사진 전송 완료 (${Math.round(file.size / 1024)} KB) — 응답: ${JSON.stringify(data)}`);
-                    // 전송 후 미리보기 정리
                     preview_img.classList.add('hidden');
                     send_image_btn.classList.add('hidden');
                     image_input.value = '';

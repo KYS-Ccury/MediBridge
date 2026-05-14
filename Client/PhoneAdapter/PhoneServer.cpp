@@ -4,6 +4,7 @@
 #include "PhoneServer.h"
 #include "ApiClient.h"
 
+#include <QCoreApplication>
 #include <QFile>
 #include <QHttpServerRequest>
 #include <QHttpServerResponse>
@@ -14,6 +15,7 @@
 #include <QJsonObject>
 #include <QDateTime>
 #include <QUuid>
+#include <QStringList>
 
 namespace medibridge::phone {
 
@@ -80,50 +82,134 @@ void PhoneServer::register_routes()
 QHttpServerResponse PhoneServer::handle_root() const
 {
     // ⚠ 보안: 경로는 절대 사용자 입력으로 만들지 않음 (path traversal 방지).
-    // 본 메소드의 html_path 는 컴파일 시점 고정 상수.
+    // 모든 후보 경로는 컴파일 시점 고정 상수.
     //
-    // TODO: Resources.qrc 사용 — qrc:/Frontend/Static/Index.html 로 변경 권장
-    //   (CMakeLists.txt 에 Frontend/Resources.qrc 등록되어 있음)
-    const QString html_path = QStringLiteral("PhoneAdapter/Static/Index.html");
-    QFile html_file(html_path);
-    if (!html_file.open(QIODevice::ReadOnly)) {
-        qWarning() << "[PhoneServer] Index.html 로드 실패:" << html_path;
-        return QHttpServerResponse(
-            QByteArrayLiteral("text/plain"),
-            QByteArray("PoC PhoneAdapter — Index.html 로드 실패")
-        );
+    // 빌드 환경에 따라 working directory 가 다를 수 있어 여러 후보 시도:
+    //   - Qt Creator 기본: build/Desktop_Qt_*/  (한 단계 위가 프로젝트 루트)
+    //   - 직접 실행:     현재 디렉터리 또는 .exe 옆
+    //   - 배포:          .exe 옆에 PhoneAdapter/Static 복사
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList candidates = {
+        QStringLiteral("PhoneAdapter/Static/Index.html"),                   // working dir
+        appDir + QStringLiteral("/PhoneAdapter/Static/Index.html"),         // .exe 옆
+        appDir + QStringLiteral("/../PhoneAdapter/Static/Index.html"),      // build/ 한 단계 위
+        appDir + QStringLiteral("/../../PhoneAdapter/Static/Index.html"),   // build/Desktop_*/  두 단계 위
+        appDir + QStringLiteral("/../Client/PhoneAdapter/Static/Index.html"),
+        appDir + QStringLiteral("/../../Client/PhoneAdapter/Static/Index.html"),
+        QStringLiteral(":/PhoneAdapter/Static/Index.html"),                 // qrc (등록 시)
+    };
+
+    for (const QString& path : candidates) {
+        QFile f(path);
+        if (f.exists() && f.open(QIODevice::ReadOnly)) {
+            qInfo() << "[PhoneServer] Index.html 로드 OK:" << path;
+            return QHttpServerResponse(
+                QByteArrayLiteral("text/html; charset=utf-8"),
+                f.readAll()
+            );
+        }
     }
+
+    qWarning() << "[PhoneServer] Index.html 모든 후보 경로 실패. appDir=" << appDir;
     return QHttpServerResponse(
-        QByteArrayLiteral("text/html; charset=utf-8"),
-        html_file.readAll()
+        QByteArrayLiteral("text/plain; charset=utf-8"),
+        QByteArray("PoC PhoneAdapter — Index.html 로드 실패. "
+                   "PhoneAdapter/Static/Index.html 을 실행 디렉터리 또는 .exe 옆에 두세요.")
     );
 }
 
 // =====================================================
 // POST /v1/media/image — 이미지 업로드
 // =====================================================
+// =====================================================
+// POST /v1/media/image — 폰 PWA 로부터 raw 바이너리 수신
+// =====================================================
+// PWA Index.html 가 multipart 대신 raw binary 로 보내므로 단순 처리:
+//   request.body()  → image bytes 그대로
+//   Content-Type   → mime_type
+//
+// 받은 즉시 메인서버 신규 사진 흐름 (intent → 보관 PC PUT → commit) 을 트리거.
+// 폰 PWA 에는 즉시 202 Accepted + request_id 응답 (fire-and-forget).
+// 결과 (식별까지) 는 PC GUI 측에서 별도 진행 또는 추후 polling.
+// =====================================================
 QHttpServerResponse PhoneServer::handle_media_image(const QHttpServerRequest& request)
 {
-    // TODO (영역 C 분담):
-    //   1. multipart/form-data 또는 JSON+base64 파싱
-    //   2. (선택) WorkerPool::instance().submit(...) 으로 디코딩·검증 위임
-    //   3. api_client_->media().upload_image(image_data, mime_type, intent_hint, callback) 호출
-    //   4. 즉시 202 Accepted 응답 (request_id 포함)
-    //
-    // 참고:
-    //   - MediaApi.md §1
-    //   - QHttpServerRequest::body() 로 raw 바이너리 접근
-    //   - multipart 파싱은 QHttpMultiPart 또는 수동 파싱 필요
-    // ⚠ 보안: 이미지 바이너리 본체 로깅 ❌. 크기만.
-    qInfo() << "[PhoneServer] POST /v1/media/image — body size:"
-            << request.body().size() << "bytes (TODO)";
+    const QByteArray image_data = request.body();
+    if (image_data.isEmpty()) {
+        QJsonObject err{{"error", "EMPTY_BODY"}};
+        return QHttpServerResponse(
+            QByteArrayLiteral("application/json; charset=utf-8"),
+            QJsonDocument(err).toJson(QJsonDocument::Compact),
+            QHttpServerResponse::StatusCode::BadRequest);
+    }
 
-    // ⚠ 보안: request_id 는 예측 불가능한 UUID 사용 (timestamp 추측 회피).
+    // Content-Type 헤더에서 mime 추출 (기본 image/jpeg)
+    QString mime_type = QStringLiteral("image/jpeg");
+    for (const auto& [name, value] : request.headers()) {
+        if (QByteArray(name.data(), int(name.size())).toLower() == "content-type") {
+            const QString v = QString::fromUtf8(QByteArray(value.data(), int(value.size())));
+            if (v.contains("png", Qt::CaseInsensitive))       mime_type = "image/png";
+            else if (v.contains("jpeg", Qt::CaseInsensitive)
+                  || v.contains("jpg",  Qt::CaseInsensitive)) mime_type = "image/jpeg";
+            break;
+        }
+    }
+
+    const QString req_id = QStringLiteral("req_phone_")
+                         + QUuid::createUuid().toString(QUuid::WithoutBraces).left(16);
+
+    qInfo().nospace() << "[PhoneServer] POST /v1/media/image — bytes=" << image_data.size()
+                      << " mime=" << mime_type << " req_id=" << req_id;
+
+    // ⭐ 신규 흐름 트리거 (intent → PUT → commit)
+    //   비동기 콜백 체인. 폰 PWA 에는 즉시 응답 후 백그라운드 진행.
+    if (api_client_) {
+        const qint64 size_b = image_data.size();
+        api_client_->media().request_intent(mime_type, size_b, "IDENTIFY",
+            [this, image_data, mime_type, req_id]
+            (const QByteArray& intent_resp, int intent_status) {
+                if (intent_status != 201) {
+                    qWarning() << "[PhoneServer] phone-flow intent 실패 status=" << intent_status;
+                    return;
+                }
+                const auto j = QJsonDocument::fromJson(intent_resp).object();
+                const QString photo_id    = j.value("photo_id").toString();
+                const QString storage_url = j.value("storage_url").toString();
+                const QString put_token   = j.value("put_token").toString();
+                if (photo_id.isEmpty() || storage_url.isEmpty() || put_token.isEmpty()) {
+                    qWarning() << "[PhoneServer] phone-flow intent 응답 불완전";
+                    return;
+                }
+                qInfo() << "[PhoneServer] phone-flow ① intent OK photo_id=" << photo_id;
+
+                api_client_->media().put_to_storage(
+                    storage_url, put_token, image_data, mime_type,
+                    [this, photo_id](const QByteArray&, int put_status) {
+                        if (put_status != 201) {
+                            qWarning() << "[PhoneServer] phone-flow PUT 실패 status=" << put_status;
+                            return;
+                        }
+                        qInfo() << "[PhoneServer] phone-flow ② PUT OK → commit";
+
+                        api_client_->media().commit_upload(photo_id,
+                            [photo_id](const QByteArray&, int commit_status) {
+                                if (commit_status == 200) {
+                                    qInfo() << "[PhoneServer] phone-flow ③ commit OK photo_id="
+                                            << photo_id << "— PC GUI 가 identify 트리거 가능";
+                                } else {
+                                    qWarning() << "[PhoneServer] phone-flow commit 실패 status="
+                                               << commit_status;
+                                }
+                            });
+                    });
+            });
+    }
+
     QJsonObject response_obj{
-        {"status", "accepted"},
-        {"request_id", QStringLiteral("req_") +
-                       QUuid::createUuid().toString(QUuid::WithoutBraces)},
-        {"todo", true}
+        {"status",     "accepted"},
+        {"request_id", req_id},
+        {"bytes",      image_data.size()},
+        {"mime_type",  mime_type}
     };
     return QHttpServerResponse(
         QByteArrayLiteral("application/json; charset=utf-8"),
@@ -135,28 +221,65 @@ QHttpServerResponse PhoneServer::handle_media_image(const QHttpServerRequest& re
 // =====================================================
 // POST /v1/speech/utterance — STT 텍스트
 // =====================================================
+// =====================================================
+// POST /v1/speech/utterance — 폰 STT 텍스트 수신 → 메인서버 forward
+// =====================================================
+// 받은 즉시 메인서버에 비동기 forward (fire-and-forget). 폰에는 202 응답.
+// ⚠ 보안: 사용자 발화 본문(PII) 로깅 X. 크기만.
+// =====================================================
 QHttpServerResponse PhoneServer::handle_speech_utterance(const QHttpServerRequest& request)
 {
-    // TODO (영역 C 분담):
-    //   1. JSON 파싱 → text, stt_confidence, context, image_request_id 추출
-    //   2. api_client_->speech().send_utterance(...) 호출
-    //   3. MainServer 응답을 그대로 폰에 반환
-    //
-    // 참고:
-    //   - SpeechApi.md §1
-    //   - QJsonDocument::fromJson(request.body())
-    // ⚠ 보안: 사용자 발화 본문(PII) 로깅 X. 크기·해시 일부만.
-    const auto body_size = request.body().size();
-    qInfo() << "[PhoneServer] POST /v1/speech/utterance — body size:"
-            << body_size << "bytes (본문 마스킹) (TODO)";
+    const auto body = request.body();
+    if (body.isEmpty()) {
+        QJsonObject err{{"error", "EMPTY_BODY"}};
+        return QHttpServerResponse(
+            QByteArrayLiteral("application/json; charset=utf-8"),
+            QJsonDocument(err).toJson(QJsonDocument::Compact),
+            QHttpServerResponse::StatusCode::BadRequest);
+    }
+
+    const auto doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) {
+        QJsonObject err{{"error", "INVALID_JSON"}};
+        return QHttpServerResponse(
+            QByteArrayLiteral("application/json; charset=utf-8"),
+            QJsonDocument(err).toJson(QJsonDocument::Compact),
+            QHttpServerResponse::StatusCode::BadRequest);
+    }
+    const auto obj = doc.object();
+    const QString text    = obj.value("text").toString();
+    const double  conf    = obj.value("stt_confidence").toDouble(1.0);
+    const QString context = obj.value("context").toString("daily_use");
+    const QString img_id  = obj.value("image_request_id").toString();
+
+    if (text.trimmed().isEmpty()) {
+        QJsonObject err{{"error", "EMPTY_TEXT"}};
+        return QHttpServerResponse(
+            QByteArrayLiteral("application/json; charset=utf-8"),
+            QJsonDocument(err).toJson(QJsonDocument::Compact),
+            QHttpServerResponse::StatusCode::BadRequest);
+    }
+
+    qInfo().nospace() << "[PhoneServer] POST /v1/speech/utterance — len=" << text.size()
+                      << " ctx=" << context;
+
+    // Fire-and-forget — 메인서버에 forward, 응답은 클라 GUI 측 controller 가 처리
+    if (api_client_) {
+        api_client_->speech().send_utterance(text, conf, context, img_id,
+            [](const QByteArray& resp, int status) {
+                qInfo().nospace() << "[PhoneServer] speech forward status="
+                                  << status << " body=" << resp.size() << "B";
+            });
+    }
 
     QJsonObject response_obj{
-        {"status", "ok"},
-        {"todo", true}
+        {"status", "accepted"},
+        {"chars",  text.size()}
     };
     return QHttpServerResponse(
         QByteArrayLiteral("application/json; charset=utf-8"),
-        QJsonDocument(response_obj).toJson(QJsonDocument::Compact)
+        QJsonDocument(response_obj).toJson(QJsonDocument::Compact),
+        QHttpServerResponse::StatusCode::Accepted
     );
 }
 
@@ -165,18 +288,15 @@ QHttpServerResponse PhoneServer::handle_speech_utterance(const QHttpServerReques
 // =====================================================
 QHttpServerResponse PhoneServer::handle_health() const
 {
-    // TODO (영역 C 분담):
-    //   1. ADB 연결 상태 확인 (외부 프로세스 실행 또는 별도 모듈)
-    //   2. ApiClient의 최근 MainServer 핑 결과 조회
-    //   3. status: ok / degraded / down 판정
-    //
-    // 참고: MonitoringApi.md §1
+    // PhoneServer 가 살아있고 ApiClient 가 인증되어 있으면 ok.
+    const bool authed = (api_client_ && api_client_->is_authenticated());
     QJsonObject response_obj{
-        {"status", "ok"},
-        {"service", "client_phone_adapter"},
-        {"version", "0.1.0"},
-        {"checked_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
-        {"todo", true}
+        {"status",      "ok"},
+        {"service",     "client_phone_adapter"},
+        {"version",     "0.1.0"},
+        {"checked_at",  QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+        {"listening_port", static_cast<int>(listening_port_)},
+        {"authenticated",  authed}
     };
     return QHttpServerResponse(
         QByteArrayLiteral("application/json; charset=utf-8"),
@@ -189,13 +309,11 @@ QHttpServerResponse PhoneServer::handle_health() const
 // =====================================================
 QHttpServerResponse PhoneServer::handle_metrics() const
 {
-    // TODO (영역 C 분담):
-    //   1. ResourceMonitor 의 최근 측정값 조회
-    //   2. JSON 직렬화 (MonitoringApi.md §2)
+    // PhoneAdapter 자체는 무거운 자원 측정 안 함. 기본 카운터만.
     QJsonObject response_obj{
-        {"service", "client_phone_adapter"},
-        {"collected_at", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
-        {"todo", true}
+        {"service",        "client_phone_adapter"},
+        {"collected_at",   QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+        {"listening_port", static_cast<int>(listening_port_)}
     };
     return QHttpServerResponse(
         QByteArrayLiteral("application/json; charset=utf-8"),
