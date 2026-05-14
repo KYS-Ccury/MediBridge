@@ -24,6 +24,9 @@ class QTcpServer;
 namespace medibridge::network {
 class ApiClient;
 }
+namespace medibridge::services {
+class UtteranceForwarder;
+}
 
 namespace medibridge::phone {
 
@@ -39,9 +42,11 @@ class PhoneServer : public QObject
 public:
     /**
      * @param api_client MainServer 호출용 클라이언트 (생명 주기는 외부 관리)
+     * @param utterance_forwarder STT 텍스트를 메인서버 forward + GUI 시그널 발신 (외부 소유, nullptr 가능 — 없으면 ApiClient 직접 호출 fallback)
      * @param parent QObject 부모
      */
     explicit PhoneServer(network::ApiClient* api_client,
+                         services::UtteranceForwarder* utterance_forwarder = nullptr,
                          QObject* parent = nullptr);
     ~PhoneServer() override;
 
@@ -82,6 +87,7 @@ private:
     QHttpServerResponse handle_metrics() const;
 
     network::ApiClient* api_client_;          // MainServer 호출용 (외부 소유, 비-소유 포인터)
+    services::UtteranceForwarder* utterance_forwarder_;   // STT 텍스트 forward + GUI 시그널 (외부 소유, nullable)
     std::unique_ptr<QHttpServer> http_server_;
     QTcpServer* tcp_server_;                  // QHttpServer가 소유
     quint16 listening_port_;

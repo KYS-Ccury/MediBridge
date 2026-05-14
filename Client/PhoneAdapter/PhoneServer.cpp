@@ -8,6 +8,7 @@
 // =====================================================
 #include "PhoneServer.h"
 #include "ApiClient.h"
+#include "UtteranceForwarder.h"
 
 #include <QCoreApplication>
 #include <QFile>
@@ -28,9 +29,12 @@ namespace medibridge::phone {
 // =====================================================
 // 생성자 / 소멸자
 // =====================================================
-PhoneServer::PhoneServer(network::ApiClient* api_client, QObject* parent)
+PhoneServer::PhoneServer(network::ApiClient* api_client,
+                         services::UtteranceForwarder* utterance_forwarder,
+                         QObject* parent)
     : QObject(parent)
     , api_client_(api_client)
+    , utterance_forwarder_(utterance_forwarder)
     , http_server_(std::make_unique<QHttpServer>())
     , tcp_server_(nullptr)
     , listening_port_(0)
@@ -269,11 +273,20 @@ QHttpServerResponse PhoneServer::handle_speech_utterance(const QHttpServerReques
     qInfo().nospace() << "[PhoneServer] POST /v1/speech/utterance — len=" << text.size()
                       << " ctx=" << context;
 
-    // Fire-and-forget — 메인서버에 forward, 응답은 클라 GUI 측 controller 가 처리
-    if (api_client_) {
-        api_client_->speech().send_utterance(text, conf, context, img_id,
+    // ⭐ UtteranceForwarder 경유 — 메인서버 forward + GUI 시그널(utterance_received) 동시 발신
+    //   VoiceController 가 이 시그널을 받아 current_text 갱신 → VoiceInputPage 표시.
+    if (utterance_forwarder_) {
+        utterance_forwarder_->forward(text, conf, context, img_id,
             [](const QByteArray& resp, int status) {
                 qInfo().nospace() << "[PhoneServer] speech forward status="
+                                  << status << " body=" << resp.size() << "B";
+            });
+    } else if (api_client_) {
+        // Fallback (utterance_forwarder 미주입 시) — GUI 갱신 X, 메인서버만 forward
+        qWarning() << "[PhoneServer] utterance_forwarder_ null → GUI 갱신 skip";
+        api_client_->speech().send_utterance(text, conf, context, img_id,
+            [](const QByteArray& resp, int status) {
+                qInfo().nospace() << "[PhoneServer] speech forward (fallback) status="
                                   << status << " body=" << resp.size() << "B";
             });
     }

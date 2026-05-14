@@ -74,7 +74,8 @@ int main(int argc, char *argv[])
     medibridge::services::UtteranceForwarder utterance_forwarder(&api_client);
 
     // 5. PhoneAdapter HTTP 서버 시작 (폰 PWA 수신)
-    medibridge::phone::PhoneServer phone_server(&api_client);
+    //    utterance_forwarder 주입 — 폰 STT 텍스트 수신 시 GUI VoiceController 도 함께 갱신
+    medibridge::phone::PhoneServer phone_server(&api_client, &utterance_forwarder);
     if (!phone_server.start_server(PHONE_ADAPTER_PORT)) {
         qCritical() << "[Main] PhoneAdapter 서버 시작 실패 — 종료";
         return 1;
