@@ -11,6 +11,29 @@
 
 ## [Unreleased]
 
+### Changed (2026-05-13 — 클라이언트 사진 흐름 ⑤+⑥ 통합)
+
+#### 클라이언트 정상 흐름 적용
+- `Client/MainServerClient/MediaApiClient.{cpp,h}` — 3개 메소드 신규:
+  - `request_intent(mime, size, purpose, cb)` → `POST /v1/media/intent`
+  - `put_to_storage(storage_url, put_token, image, mime, cb)` → PUT 보관 PC (메인 우회, JWT 대신 put_token 헤더, `QNetworkAccessManager` 직접 호출)
+  - `commit_upload(photo_id, cb)` → `POST /v1/media/commit`
+  - 레거시 `upload_image` 는 유지 (TestMode/보관 PC 미가동 fallback)
+- `Client/Backend/Controllers/PillController.cpp::on_capture_succeeded` — 4단계 콜백 체인으로 교체:
+  1. `/v1/media/intent` → photo_id + storage_url + put_token + request_id 수신
+  2. `PUT <storage_url>` (보관 PC `10.10.10.122:8004`) — Authorization: Bearer put_token
+  3. `/v1/media/commit` → status PENDING → READY 전이
+  4. `/v1/pill/identify` (request_id) — 기존 흐름
+- 단계별 에러 코드: `INTENT_FAILED_<status>`, `INTENT_INVALID_RESPONSE`, `STORAGE_PUT_FAILED_<status>`, `COMMIT_FAILED_<status>`
+- 사진 본체가 메인서버를 통과하지 않음 (컨트롤 평면 ↔ 데이터 평면 분리 완성)
+
+#### Docs
+- `Docs/Api/MediaApi.md v0.2` — 클라 통합 완료 표기
+- `Docs/시스템 흐름 정리본_ver3.md §17.2` — 클라 통합 완료 (실제 흐름 동작)
+- `Docs/CHANGELOG.md` — 본 항목
+
+---
+
 ### Added (2026-05-13 — 사진 흐름 ⑤+⑥ + 보관 PC + Report PDF + 청소 잡)
 
 #### 신규 모듈 — DataStorageServer (보관 PC Drogon 미니 서버, port 8004)

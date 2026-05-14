@@ -60,41 +60,89 @@ void PillController::capture_and_identify()
     qInfo() << "[PillController] 촬영 요청 수락 — 다음 스트리밍 프레임을 대기합니다.";
 }
 
+// =====================================================
+// ⭐ 정상 사진 흐름 (MediaApi v0.2) — 4단계 콜백 체인
+// =====================================================
+//   ① POST /v1/media/intent       → photo_id, storage_url, put_token, request_id
+//   ② PUT  <storage_url>           → 보관 PC(10.10.10.122:8004) 직접 업로드
+//   ③ POST /v1/media/commit       → status PENDING → READY
+//   ④ POST /v1/pill/identify      → request_id 로 추론 요청
+//
+// 사진 본체는 메인서버를 통과하지 않음 — 메인은 토큰만 발급.
+// =====================================================
 void PillController::on_capture_succeeded(const QByteArray& png_data)
 {
     // 💡 사용자가 촬영 버튼을 눌렀을 때(is_loading_ == true)만 서버로 업로드합니다.
-    if (!is_loading_) return; 
+    if (!is_loading_) return;
 
-    // 1) 미디어 업로드 → request_id 받음
-    qInfo() << "[PillController] 스트리밍 프레임 캡처 성공 — 서버 업로드 시작";
+    qInfo() << "[PillController] 스트리밍 프레임 캡처 성공 — ① /v1/media/intent 요청";
 
-    api_client_->media().upload_image(png_data, "image/png", "identify",
-        [this](const QByteArray& response, int status_code) {
-            if (status_code != 200 && status_code != 201 && status_code != 202) {
+    const QString mime    = QStringLiteral("image/png");
+    const qint64  size_b  = png_data.size();
+    const QString purpose = QStringLiteral("IDENTIFY");
+
+    // ① POST /v1/media/intent
+    api_client_->media().request_intent(mime, size_b, purpose,
+        [this, png_data, mime](const QByteArray& intent_resp, int intent_status) {
+            if (intent_status != 201) {
                 set_loading(false);
-                set_error(QStringLiteral("UPLOAD_FAILED_") + QString::number(status_code));
+                set_error(QStringLiteral("INTENT_FAILED_") + QString::number(intent_status));
                 emit identify_failed(last_error_);
                 return;
             }
 
-            // 응답에서 request_id 추출 후 식별 단계로 진행
-            const auto doc = QJsonDocument::fromJson(response);
-            const QString req_id = doc.isObject()
-                ? doc.object().value("request_id").toString()
-                : QString();
-            if (req_id.isEmpty()) {
+            const auto j = QJsonDocument::fromJson(intent_resp).object();
+            const QString photo_id    = j.value("photo_id").toString();
+            const QString storage_url = j.value("storage_url").toString();
+            const QString put_token   = j.value("put_token").toString();
+            const QString req_id      = j.value("request_id").toString();
+
+            if (photo_id.isEmpty() || storage_url.isEmpty()
+                || put_token.isEmpty() || req_id.isEmpty()) {
                 set_loading(false);
-                set_error("UPLOAD_NO_REQUEST_ID");
+                set_error("INTENT_INVALID_RESPONSE");
                 emit identify_failed(last_error_);
                 return;
             }
 
-            qInfo() << "[PillController] 업로드 OK request_id=" << req_id
-                    << "→ /v1/pill/identify 호출";
-            // 2) 식별 호출 (이어달리기)
-            api_client_->pill().identify(req_id, /*utterance_id=*/QString(), true,
-                [this](const QByteArray& resp, int status) {
-                    handle_identify_response(resp, status);
+            qInfo() << "[PillController] ① intent OK photo_id=" << photo_id
+                    << "→ ② PUT" << storage_url;
+
+            // ② PUT <storage_url> — 보관 PC 직접
+            api_client_->media().put_to_storage(storage_url, put_token, png_data, mime,
+                [this, photo_id, req_id](const QByteArray& put_resp, int put_status) {
+                    Q_UNUSED(put_resp);
+                    if (put_status != 201) {
+                        set_loading(false);
+                        set_error(QStringLiteral("STORAGE_PUT_FAILED_")
+                                  + QString::number(put_status));
+                        emit identify_failed(last_error_);
+                        return;
+                    }
+
+                    qInfo() << "[PillController] ② PUT 보관 PC OK → ③ /v1/media/commit";
+
+                    // ③ POST /v1/media/commit
+                    api_client_->media().commit_upload(photo_id,
+                        [this, req_id](const QByteArray& commit_resp, int commit_status) {
+                            Q_UNUSED(commit_resp);
+                            if (commit_status != 200) {
+                                set_loading(false);
+                                set_error(QStringLiteral("COMMIT_FAILED_")
+                                          + QString::number(commit_status));
+                                emit identify_failed(last_error_);
+                                return;
+                            }
+
+                            qInfo() << "[PillController] ③ commit OK request_id=" << req_id
+                                    << "→ ④ /v1/pill/identify";
+
+                            // ④ POST /v1/pill/identify (기존 흐름)
+                            api_client_->pill().identify(req_id, /*utterance_id=*/QString(), true,
+                                [this](const QByteArray& resp, int status) {
+                                    handle_identify_response(resp, status);
+                                });
+                        });
                 });
         });
 }

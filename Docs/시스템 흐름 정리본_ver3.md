@@ -944,7 +944,7 @@ Fallback 발동: `is_available()==false`, "고품질 음성" 사용자 설정, �
 - 디스크 구조: `<storage_root>/<anonymous_id>/<photo_id>.<ext>` — user_id 노출 0
 - 운영 시 `storage_root = /var/lib/medibridge_storage`. 시연 시 `/tmp/medibridge_storage_smoke`
 
-### 17.2 사진 정상 흐름 — intent → PUT → commit → identify
+### 17.2 사진 정상 흐름 — intent → PUT → commit → identify  *(클라 통합 완료 2026-05-13)*
 
 ```
 [클라PC]                    [메인 :8001]                    [보관 PC :8004]            [Vision PC :8003]

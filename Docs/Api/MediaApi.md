@@ -251,3 +251,4 @@ PUT 성공 후 클라가 호출 → `photo_storage` status PENDING → READY 전
 | --- | --- | --- |
 | v0.1 | 2026-05-06 | 초안 — `POST /v1/media/image` multipart/base64 |
 | **v0.2** | **2026-05-13** | **사진 흐름 ⑤+⑥ 통합** — intent / commit / get_token 신규 3개. 사진 본체 메인서버 통과 X (보관 PC 8004 직접 PUT). HMAC 토큰 (op=put\|get, aud=datastorage). 11가지 검증. 청소 잡 자동 동작. 레거시 `/v1/media/image` 는 TestMode fallback. |
+| **(2026-05-13 클라 통합)** | 클라이언트 측 `MediaApiClient` 에 `request_intent` / `put_to_storage` / `commit_upload` 3개 메소드 추가. `PillController::on_capture_succeeded` 4단계 콜백 체인 (intent → PUT 보관 PC → commit → identify) 으로 교체. 사진 본체가 메인서버를 통과하지 않는 정상 흐름 완성. 단계별 에러 코드 `INTENT_FAILED_*` / `INTENT_INVALID_RESPONSE` / `STORAGE_PUT_FAILED_*` / `COMMIT_FAILED_*`. |
