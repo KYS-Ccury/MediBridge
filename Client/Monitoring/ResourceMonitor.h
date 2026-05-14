@@ -57,6 +57,12 @@ private:
     double last_cpu_percent_;
     double last_memory_percent_;
     double last_disk_percent_;
+
+    // Windows GetSystemTimes 차이 계산용 (Q_OS_WIN 외에선 미사용)
+    quint64 prev_idle_   = 0;
+    quint64 prev_kernel_ = 0;
+    quint64 prev_user_   = 0;
+    bool    has_prev_cpu_ = false;
 };
 
 } // namespace medibridge::monitoring

@@ -7,6 +7,8 @@
 #include <QLoggingCategory>
 #include <QElapsedTimer>
 
+#include <memory>
+
 namespace medibridge::monitoring {
 
 HealthChecker::HealthChecker(network::ApiClient* api_client,
@@ -41,27 +43,21 @@ void HealthChecker::check_now()
         return;
     }
 
-    // TODO (영역 C 분담):
-    //   1. QElapsedTimer 시작
-    //   2. api_client_->monitoring().check_health(callback) 호출
-    //   3. 콜백에서 status_code 확인 (200 = ok, 503 = degraded, 0 = 네트워크 실패)
-    //   4. 응답 시간 계산 → emit checked()
-    //   5. 상태 전이(reachable ↔ unreachable) 감지 → 해당 시그널 emit
-    //
-    // 본 골격 단계에선 호출만 하고 콜백에서 로그.
+    // 응답 시간 측정용 timer — shared_ptr 로 콜백 수명 길이 보장
+    auto et = std::make_shared<QElapsedTimer>();
+    et->start();
 
-    qInfo() << "[HealthChecker] /health 폴링 — TODO 구현";
-
-    // 패턴 B 적용 후 호출 경로: api_client_->monitoring().check_health(...)
     api_client_->monitoring().check_health(
-        [this](const QByteArray& response, int status_code) {
+        [this, et](const QByteArray& response, int status_code) {
+            const qint64 elapsed = et->elapsed();
             const bool was_reachable = last_reachable_;
             last_reachable_ = (status_code == 200);
-            last_latency_ms_ = -1;   // TODO: 측정값 채우기
+            last_latency_ms_ = static_cast<int>(elapsed);
 
             qInfo().nospace()
                 << "[HealthChecker] MainServer status=" << status_code
-                << " body=" << response.left(200);
+                << " latency=" << elapsed << "ms"
+                << " body=" << response.left(120);
 
             // 상태 전이 감지
             if (!was_reachable && last_reachable_) {
