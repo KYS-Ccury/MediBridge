@@ -13,6 +13,34 @@ import "../Components"
 Page {
     id: result_page
 
+    // 페이지 진입 시 신뢰도 기반 대화형 가이드 (FR-C4-01·FR-C6-02)
+    //   HIGH  (95↑) : 단일 결과 안내 톤
+    //   MEDIUM(70~) : Top-3 비교 안내 — "화면에서 직접 선택해주세요"
+    //   LOW   (70↓) : 식별 어려움 + 약사·의사 상담 권유
+    // tts_text 가 비어 있을 때만 페이지가 대신 안내 발화 → 중복 방지.
+    Component.onCompleted: {
+        if (pill_controller.tts_text.length > 0) return;   // PillController 자동 발화에 위임
+        var tier = pill_controller.confidence_tier
+        if (tier === "LOW") {
+            tts_adapter.speak_conversational_guide(
+                qsTr("식별이 어렵습니다. 약사·의사에게 직접 확인을 권유드립니다."))
+        } else if (tier === "MEDIUM") {
+            tts_adapter.speak_conversational_guide(
+                qsTr("식별 결과 후보가 여러 개 입니다. 화면에서 선택해주세요."))
+        }
+    }
+
+    // DUR 결과 변경 시 — 위험 검출 시 추가 발화 (FR-C3-02 위험 안내 / FR-B4-02 템플릿)
+    Connections {
+        target: pill_controller
+        function onDur_result_changed() {
+            if (pill_controller.dur_result === "risk_found") {
+                tts_adapter.speak_conversational_guide(
+                    qsTr("주의: 위험이 검출되었습니다. 약사·의사 상담이 필요합니다."))
+            }
+        }
+    }
+
     ScrollView {
         anchors.fill: parent
         contentWidth: availableWidth

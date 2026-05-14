@@ -44,8 +44,11 @@ set(SOURCES
     Backend/Controllers/HistoryController.cpp
     Backend/Controllers/ReportController.cpp
     Backend/Controllers/PhoneLinkController.cpp
-    Backend/Controllers/VoiceController.cpp    
+    Backend/Controllers/VoiceController.cpp
     Backend/Controllers/CameraStreamController.cpp
+
+    # Backend - TTS (Windows SAPI 어댑터, 기획서 §8 어필 포인트)
+    Backend/Tts/TtsAdapter.cpp
 
     # Backend - Models (QAbstractListModel)
     Backend/Models/PillCandidateListModel.cpp
@@ -88,9 +91,10 @@ set(HEADERS
     Backend/Controllers/HistoryController.h
     Backend/Controllers/ReportController.h
     Backend/Controllers/PhoneLinkController.h
-    Backend/Controllers/VoiceController.h     
+    Backend/Controllers/VoiceController.h
     Backend/Controllers/CameraStreamController.h
-    
+
+    Backend/Tts/TtsAdapter.h
 
     Backend/Models/PillCandidateListModel.h
     Backend/Models/HistoryListModel.h
@@ -150,6 +154,7 @@ target_include_directories(MediBridgeClient PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/Backend/Controllers
     ${CMAKE_CURRENT_SOURCE_DIR}/Backend/Models
+    ${CMAKE_CURRENT_SOURCE_DIR}/Backend/Tts
     ${CMAKE_CURRENT_SOURCE_DIR}/PhoneLink
     ${CMAKE_CURRENT_SOURCE_DIR}/PhoneAdapter
     ${CMAKE_CURRENT_SOURCE_DIR}/MainServerClient

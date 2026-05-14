@@ -34,6 +34,9 @@
 #include "VoiceController.h"
 #include "CameraStreamController.h"
 
+// Backend - TTS 어댑터 (기획서 §8 어필 포인트, 요구사항 FR-C3-02 / FR-C6)
+#include "TtsAdapter.h"
+
 // PhoneLink - USB 유선 연동 자동화
 #include "AdbDeviceMonitor.h"
 #include "AdbReverseManager.h"
@@ -99,6 +102,23 @@ int main(int argc, char *argv[])
     medibridge::controllers::VoiceController voice_controller(&utterance_forwarder);
     medibridge::controllers::CameraStreamController camera_stream_controller(&phone_capture_service);
 
+    // 8-A. TTS 어댑터 (Windows SAPI 한국어, QSettings 영속)
+    medibridge::tts::TtsAdapter tts_adapter;
+    qInfo() << "[Main] TtsAdapter 준비 — enabled=" << tts_adapter.enabled();
+
+    // PillController → TTS 자동 발화 연동
+    //   식별 결과의 tts_text 가 갱신될 때마다 음성 안내.
+    //   백엔드가 "정해진 템플릿" 으로 만든 문구를 그대로 발화 — LLM 자연어 가공 X.
+    QObject::connect(&pill_controller,
+                     &medibridge::controllers::PillController::tts_text_changed,
+                     &tts_adapter,
+                     [&pill_controller, &tts_adapter]() {
+                         const QString text = pill_controller.tts_text();
+                         if (!text.isEmpty()) tts_adapter.speak(text);
+                     });
+
+    // QML 의존성을 위해 root_context 에 등록할 준비.
+
     // 9. QML 엔진 + Controller 컨텍스트 등록
     QQmlApplicationEngine engine;
     auto* root_context = engine.rootContext();
@@ -110,6 +130,7 @@ int main(int argc, char *argv[])
     root_context->setContextProperty("phone_link_controller", &phone_link_controller);
     root_context->setContextProperty("voice_controller",      &voice_controller);
     root_context->setContextProperty("camera_stream_controller", &camera_stream_controller);
+    root_context->setContextProperty("tts_adapter",           &tts_adapter);
 
     // 10. QML 엔진 종료 시 앱 종료
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
@@ -118,6 +139,11 @@ int main(int argc, char *argv[])
 
     // 11. 진입 QML 로드
     engine.load(QUrl(QStringLiteral("qrc:/Frontend/Main.qml")));
+
+    // 12. 자동 로그인 시도 (FR-C7-04) — QML 엔진 로드 후에 호출해야
+    //     Main.qml 의 Connections.onLogin_succeeded 가 stack.replace 로
+    //     HomePage 로 자동 이동 가능.
+    auth_controller.restore_session();
 
     qInfo() << "[Main] MediBridge Client 시작됨";
     qInfo() << "[Main]   - PhoneAdapter port:" << PHONE_ADAPTER_PORT;

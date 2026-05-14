@@ -128,27 +128,49 @@ Page {
             }
         }
 
-        // 4. 하단 상태 안내 바
+        // 4. 음성 안내 ON/OFF 토글 (FR-C3-03 — 음성 ↔ 클릭 선택)
+        //    TtsAdapter.enabled 와 양방향 바인딩, QSettings 영속.
         Rectangle {
             Layout.fillWidth: true
             height: 56
             radius: 12
-            color: "#F0F7FF"
-            border.color: "#D0E2FF"
-            
+            color: tts_adapter.enabled ? "#F0F7FF" : "#FAFAFA"
+            border.color: tts_adapter.enabled ? "#D0E2FF" : "#E0E0E0"
+
             RowLayout {
-                anchors.centerIn: parent
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
                 spacing: 12
-                Text { text: "💡"; font.pixelSize: 20 }
+
+                Text {
+                    text: tts_adapter.enabled ? "🔊" : "🔇"
+                    font.pixelSize: 20
+                }
                 Label {
-                    text: qsTr("음성 안내가 켜져 있습니다. 모든 안내를 소리로 들을 수 있습니다.")
+                    text: tts_adapter.enabled
+                          ? qsTr("음성 안내 켜짐 — 모든 안내를 소리로 들을 수 있습니다.")
+                          : qsTr("음성 안내 꺼짐 — 화면 표시만 사용합니다.")
                     font.pixelSize: 15
-                    color: "#1565C0"
+                    color: tts_adapter.enabled ? "#1565C0" : "#616161"
                     font.bold: true
+                    Layout.fillWidth: true
+                }
+                Switch {
+                    checked: tts_adapter.enabled
+                    onToggled: tts_adapter.set_enabled(checked)
+                    ToolTip.text: qsTr("음성 안내 ON/OFF — 설정은 자동 저장됩니다")
+                    ToolTip.visible: hovered
                 }
             }
         }
     } // 💡 최상위 ColumnLayout 닫기
+
+    // 페이지 진입 시 능동 가이드 1회 (FR-C6-01)
+    Component.onCompleted: {
+        tts_adapter.speak_active_guide(
+            qsTr("메디브릿지에 오신 것을 환영합니다. 음성으로 질문하거나 카메라로 약을 촬영해보세요."))
+    }
 
     // --- 인라인 컴포넌트 정의 (Page 내부에 위치해야 함) ---
     component ActionCard : Button {

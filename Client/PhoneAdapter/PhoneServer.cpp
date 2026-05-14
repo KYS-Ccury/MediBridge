@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QHttpServerRequest>
 #include <QHttpServerResponse>
+#include <QHttpHeaders>
 #include <QTcpServer>
 #include <QHostAddress>
 #include <QLoggingCategory>
@@ -149,15 +150,15 @@ QHttpServerResponse PhoneServer::handle_media_image(const QHttpServerRequest& re
     }
 
     // Content-Type 헤더에서 mime 추출 (기본 image/jpeg)
+    // Qt 6.11 QHttpHeaders 는 직접 range-for 불가 → values() 로 모든 값 순회.
     QString mime_type = QStringLiteral("image/jpeg");
-    for (const auto& [name, value] : request.headers()) {
-        if (QByteArray(name.data(), int(name.size())).toLower() == "content-type") {
-            const QString v = QString::fromUtf8(QByteArray(value.data(), int(value.size())));
-            if (v.contains("png", Qt::CaseInsensitive))       mime_type = "image/png";
-            else if (v.contains("jpeg", Qt::CaseInsensitive)
-                  || v.contains("jpg",  Qt::CaseInsensitive)) mime_type = "image/jpeg";
-            break;
-        }
+    const auto headers = request.headers();
+    const auto ct_values = headers.values(QHttpHeaders::WellKnownHeader::ContentType);
+    if (!ct_values.isEmpty()) {
+        const QString v = QString::fromUtf8(ct_values.first());
+        if (v.contains("png", Qt::CaseInsensitive))           mime_type = "image/png";
+        else if (v.contains("jpeg", Qt::CaseInsensitive)
+              || v.contains("jpg",  Qt::CaseInsensitive))     mime_type = "image/jpeg";
     }
 
     const QString req_id = QStringLiteral("req_phone_")

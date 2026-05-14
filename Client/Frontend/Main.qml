@@ -72,6 +72,11 @@ ApplicationWindow {
         function onLogout_completed() {
             stack.replace("Pages/LoginPage.qml")
         }
+        function onSession_expired() {
+            // FR-C7-04 — 자동 로그인 토큰 만료 시 토스트로 안내
+            app_controller.show_toast(
+                qsTr("세션이 만료되어 다시 로그인이 필요합니다."))
+        }
     }
 
     // 전역 토스트

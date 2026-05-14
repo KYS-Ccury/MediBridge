@@ -41,6 +41,12 @@ public:
                             const QString& user_name);
     Q_INVOKABLE void logout();
 
+    /// 앱 시작 시 1회 호출 — QSettings 에서 토큰·프로필 복원 (FR-C7-04 자동 로그인)
+    /// 복원 성공 시 is_authenticated=true 가 되며 login_succeeded 시그널이 발신됨.
+    /// 토큰이 만료된 경우 첫 API 호출이 401 → token_expired 시그널 →
+    /// on_token_expired() 슬롯이 세션을 정리한다.
+    Q_INVOKABLE void restore_session();
+
 signals:
     // 상태 변경 NOTIFY
     void is_authenticated_changed();
@@ -56,10 +62,18 @@ signals:
     void signup_succeeded();
     void signup_failed(const QString& error_code);
     void logout_completed();
+    /// 저장된 토큰이 만료되어 자동 로그아웃됨
+    void session_expired();
+
+public slots:
+    /// ApiClient::token_expired 수신 — 저장 세션 즉시 폐기
+    void on_token_expired();
 
 private:
     void set_loading(bool loading);
     void set_error(const QString& error_code);
+    void persist_session(const QString& token);
+    void clear_persisted_session();
 
     network::ApiClient* api_client_;
     bool is_authenticated_ = false;
