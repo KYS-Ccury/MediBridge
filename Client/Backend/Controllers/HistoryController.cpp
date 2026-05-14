@@ -83,12 +83,28 @@ void HistoryController::load_list(const QString& from_date,
                 emit list_load_failed(last_error_);
                 return;
             }
-            const auto items = doc.object().value("items").toArray();
-            total_count_ = doc.object().value("total_count").toInt(items.size());
+            const auto items_arr = doc.object().value("items").toArray();
+            total_count_ = doc.object().value("total_count").toInt(items_arr.size());
             emit total_count_changed();
+
+            QVector<models::HistoryItem> items;
+            items.reserve(items_arr.size());
+            for (const auto& v : items_arr) {
+                const auto o = v.toObject();
+                models::HistoryItem h;
+                h.intake_id       = o.value("intake_id").toString();
+                h.item_code       = o.value("item_code").toString();
+                h.drug_name       = o.value("drug_name").toString();
+                h.intake_datetime = o.value("intake_datetime").toString();
+                h.quantity        = o.value("quantity").toInt();
+                h.memo            = o.value("memo").toString();
+                h.time_slot       = o.value("time_slot").toString();
+                items.push_back(h);
+            }
+            items_.set_items(items);
+
             qInfo().nospace() << "[HistoryController] list 로드 OK — items=" << items.size()
                               << " total=" << total_count_;
-            // TODO Phase 2-B: HistoryListModel 갱신
             emit list_loaded();
         });
 }

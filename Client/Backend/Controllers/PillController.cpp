@@ -220,13 +220,44 @@ void PillController::handle_identify_response(const QByteArray& response, int st
     dur_result_ = dur.value("result").toString("no_risk_found");
     emit dur_result_changed();
 
-    // 후보 수 로그
-    const auto cands = root.value("candidates").toArray();
+    // candidates → PillCandidateListModel
+    const auto cands_arr = root.value("candidates").toArray();
+    QVector<models::PillCandidate> cands;
+    cands.reserve(cands_arr.size());
+    for (const auto& v : cands_arr) {
+        const auto co = v.toObject();
+        models::PillCandidate c;
+        c.item_code    = co.value("item_code").toString();
+        c.drug_name    = co.value("drug_name").toString();
+        c.confidence   = co.value("confidence").toDouble();
+        c.in_user_pool = co.value("in_user_pool").toBool(false);
+        QStringList mk;
+        for (const auto& m : co.value("match_keys").toArray()) mk << m.toString();
+        c.match_keys = mk.join(", ");
+        cands.push_back(c);
+    }
+    candidates_.set_candidates(cands);
+
+    // dur_check.details → DurDetailListModel
+    const auto details_arr = dur.value("details").toArray();
+    QVector<models::DurDetail> details;
+    details.reserve(details_arr.size());
+    for (const auto& v : details_arr) {
+        const auto d = v.toObject();
+        models::DurDetail x;
+        x.dur_type        = d.value("dur_type").toString();
+        x.drug_a_name     = d.value("drug_a_name").toString();
+        x.drug_b_name     = d.value("drug_b_name").toString();
+        x.prohibit_reason = d.value("prohibit_reason").toString();
+        x.action_message  = d.value("action_message").toString();
+        details.push_back(x);
+    }
+    dur_details_.set_details(details);
+
     qInfo().nospace() << "[PillController] identify OK — candidates=" << cands.size()
+                      << " dur_details=" << details.size()
                       << " tier=" << confidence_tier_
                       << " dur=" << dur_result_;
-
-    // TODO Phase 2-B: PillCandidateListModel / DurDetailListModel 갱신
 
     emit identify_succeeded();
 }
@@ -282,11 +313,26 @@ void PillController::load_pool(bool include_inactive)
                 emit pool_load_failed(last_error_);
                 return;
             }
-            const auto items = doc.object().value("items").toArray();
-            const int total  = doc.object().value("total_count").toInt(items.size());
+            const auto items_arr = doc.object().value("items").toArray();
+            const int total      = doc.object().value("total_count").toInt(items_arr.size());
+
+            QVector<models::PoolItem> items;
+            items.reserve(items_arr.size());
+            for (const auto& v : items_arr) {
+                const auto o = v.toObject();
+                models::PoolItem p;
+                p.pool_id    = o.value("pool_id").toInt();
+                p.item_code  = o.value("item_code").toString();
+                p.drug_name  = o.value("drug_name").toString();
+                p.reg_method = o.value("reg_method").toString();
+                p.is_active  = o.value("is_active").toBool(true);
+                p.created_at = o.value("created_at").toString();
+                items.push_back(p);
+            }
+            pool_items_.set_items(items);
+
             qInfo().nospace() << "[PillController] pool 로드 OK — items=" << items.size()
                               << " total=" << total;
-            // TODO Phase 2-B: PoolItemListModel 갱신
             emit pool_loaded();
         });
 }

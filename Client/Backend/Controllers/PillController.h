@@ -12,6 +12,10 @@
 #include <QString>
 #include <QByteArray>
 
+#include "PillCandidateListModel.h"
+#include "DurDetailListModel.h"
+#include "PoolItemListModel.h"
+
 namespace medibridge::network { class ApiClient; }
 namespace medibridge::phonelink { class PhoneCaptureService; }
 
@@ -29,6 +33,11 @@ class PillController : public QObject
     Q_PROPERTY(QString dur_result READ dur_result NOTIFY dur_result_changed)
     Q_PROPERTY(QString last_request_id READ last_request_id NOTIFY last_request_id_changed)
 
+    // ⭐ QML 노출 Models — QAbstractListModel*
+    Q_PROPERTY(QObject* candidates READ candidates_model CONSTANT)
+    Q_PROPERTY(QObject* dur_details READ dur_details_model CONSTANT)
+    Q_PROPERTY(QObject* pool_items READ pool_items_model CONSTANT)
+
 public:
     /**
      * @param api_client            메인서버 호출 클라이언트 (외부 소유)
@@ -45,6 +54,11 @@ public:
     QString tts_text() const;
     QString dur_result() const;
     QString last_request_id() const;
+
+    // Models 접근자 (QML Q_PROPERTY 대상)
+    QObject* candidates_model()   { return &candidates_; }
+    QObject* dur_details_model()  { return &dur_details_; }
+    QObject* pool_items_model()   { return &pool_items_; }
 
     // QML 호출
     /// ⭐ PC 에서 폰 화면 캡쳐 → 메인서버 업로드 → 식별 결과 자동 표시
@@ -91,6 +105,11 @@ private:
     QString tts_text_;
     QString dur_result_;
     QString last_request_id_;
+
+    // ⭐ QML 노출 Models — controller 가 소유
+    medibridge::models::PillCandidateListModel candidates_;
+    medibridge::models::DurDetailListModel     dur_details_;
+    medibridge::models::PoolItemListModel      pool_items_;
 };
 
 } // namespace medibridge::controllers
