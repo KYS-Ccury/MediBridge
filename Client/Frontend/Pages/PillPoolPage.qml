@@ -30,18 +30,110 @@ Page {
             font.bold: true
         }
 
-        // 약 풀 리스트 (TODO: pool_item_list_model 컨텍스트 등록 후 ListView)
+        // 약 풀 리스트 — pill_controller.pool_items 바인딩
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: "#FAFAFA"
             border.color: "#E0E0E0"
+            radius: 8
 
-            Label {
-                anchors.centerIn: parent
-                text: qsTr("(pool_item_list_model 등록 후 ListView로 표시)")
-                color: "#9E9E9E"
+            ListView {
+                id: pool_list
+                anchors.fill: parent
+                anchors.margins: 8
+                clip: true
+                model: pill_controller.pool_items
+                spacing: 6
+
+                delegate: Rectangle {
+                    width: pool_list.width
+                    height: 80
+                    color: model.is_active ? "white" : "#F5F5F5"
+                    border.color: "#D5DCE4"
+                    border.width: 1
+                    radius: 6
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Label {
+                                text: model.drug_name
+                                font.pixelSize: 16
+                                font.bold: true
+                                color: model.is_active ? "#1A2238" : "#9E9E9E"
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            RowLayout {
+                                spacing: 8
+                                Label {
+                                    text: qsTr("코드: ") + model.item_code
+                                    font.pixelSize: 11
+                                    color: "#5B6478"
+                                }
+                                Rectangle {
+                                    radius: 4
+                                    color: "#E3F2FD"
+                                    implicitWidth: reg_label.implicitWidth + 10
+                                    implicitHeight: reg_label.implicitHeight + 4
+                                    Label {
+                                        id: reg_label
+                                        anchors.centerIn: parent
+                                        text: model.reg_method
+                                        font.pixelSize: 10
+                                        color: "#1565C0"
+                                        font.bold: true
+                                    }
+                                }
+                                Label {
+                                    visible: !model.is_active
+                                    text: qsTr("비활성")
+                                    font.pixelSize: 10
+                                    color: "#C62828"
+                                    font.bold: true
+                                }
+                            }
+                            Label {
+                                text: qsTr("등록일: ") + model.created_at.substring(0, 10)
+                                font.pixelSize: 10
+                                color: "#9E9E9E"
+                            }
+                        }
+
+                        ToolButton {
+                            text: "✕"
+                            font.pixelSize: 18
+                            visible: model.is_active
+                            ToolTip.visible: hovered
+                            ToolTip.text: qsTr("이 약을 풀에서 제거")
+                            onClicked: pill_controller.remove_from_pool(model.pool_id)
+                        }
+                    }
+                }
+
+                // 빈 풀 안내
+                Label {
+                    anchors.centerIn: parent
+                    text: qsTr("등록된 약이 없습니다.\n아래 [음성으로 등록] 또는 [직접 입력] 으로 추가하세요.")
+                    horizontalAlignment: Text.AlignHCenter
+                    color: "#9E9E9E"
+                    visible: pool_list.count === 0
+                    wrapMode: Text.WordWrap
+                }
             }
+        }
+
+        Label {
+            text: qsTr("총 ") + pool_list.count + qsTr("건")
+            font.pixelSize: 12
+            color: "#5B6478"
         }
 
         RowLayout {
@@ -51,14 +143,13 @@ Page {
             AppButton {
                 text: qsTr("음성으로 등록")
                 Layout.fillWidth: true
-                onClicked: app_controller.show_toast(
-                    qsTr("폰의 PWA 페이지에서 마이크 입력해주세요"))
+                onClicked: stack.push("VoiceInputPage.qml")
             }
 
             AppButton {
                 text: qsTr("직접 입력")
                 Layout.fillWidth: true
-                onClicked: app_controller.show_toast(qsTr("직접 입력 — TODO"))
+                onClicked: manual_add_dialog.open()
             }
 
             AppButton {
@@ -74,6 +165,50 @@ Page {
                 Layout.fillWidth: true
                 onClicked: stack.pop()
             }
+        }
+    }
+
+    // ===== 직접 입력 다이얼로그 — item_code 직접 추가 =====
+    Dialog {
+        id: manual_add_dialog
+        title: qsTr("약 직접 등록")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(parent.width * 0.9, 480)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Label {
+                text: qsTr("식약처 품목기준코드 (item_code)")
+                font.pixelSize: 13
+                color: "#5B6478"
+            }
+            TextField {
+                id: code_input
+                placeholderText: qsTr("예: 999800001")
+                Layout.fillWidth: true
+                inputMethodHints: Qt.ImhDigitsOnly
+            }
+
+            Label {
+                text: qsTr("※ 코드 확인 — 시드: 999800001 (타이레놀500), 999800005 (이부프로펜200), 999800007 (베아제), 999800010 (아스피린)")
+                font.pixelSize: 11
+                color: "#9E9E9E"
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+
+        onAccepted: {
+            if (code_input.text.trim().length === 0) {
+                app_controller.show_toast(qsTr("코드를 입력해주세요"))
+                return
+            }
+            pill_controller.add_to_pool(code_input.text.trim(), "MANUAL")
+            code_input.text = ""
         }
     }
 

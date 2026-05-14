@@ -1,5 +1,10 @@
 // =====================================================
-// PhoneServer 구현 — 골격 (TODO 주석으로 남겨진 부분이 분담 작업)
+// PhoneServer 구현 — 폰 PWA ↔ PC ↔ 메인서버 중계
+// =====================================================
+// /media/image  : 폰 카메라 raw binary 수신 → ImageForwarder (intent→PUT→commit→identify)
+// /speech/utter : 폰 STT 텍스트 수신 → UtteranceForwarder (메인서버 utterance 전송)
+// /health,/metrics : 폰 PWA 가 PC 상태 점검 시 폴링
+// /           : PWA Index.html 서빙 (7-path fallback)
 // =====================================================
 #include "PhoneServer.h"
 #include "ApiClient.h"

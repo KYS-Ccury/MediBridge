@@ -6,6 +6,7 @@
 // =====================================================
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import "../Components"
 
@@ -41,44 +42,148 @@ Page {
                 color: "#212121"
             }
 
-            // DUR 결과 안내
+            // ===== 식별 후보 리스트 — pill_controller.candidates 바인딩 =====
+            Label {
+                text: qsTr("후보 약")
+                font.pixelSize: 16
+                font.bold: true
+                visible: candidates_list.count > 0
+            }
+
+            ListView {
+                id: candidates_list
+                Layout.fillWidth: true
+                Layout.preferredHeight: contentHeight
+                interactive: false
+                model: pill_controller.candidates
+                spacing: 8
+
+                delegate: Rectangle {
+                    width: candidates_list.width
+                    height: 92
+                    color: model.in_user_pool ? "#E8F5E9" : "white"
+                    border.color: "#D5DCE4"
+                    border.width: 1
+                    radius: 8
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            RowLayout {
+                                Label {
+                                    text: model.drug_name
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                    color: "#1A2238"
+                                }
+                                Rectangle {
+                                    visible: model.in_user_pool
+                                    color: "#2E7D32"
+                                    radius: 4
+                                    implicitWidth: in_pool_label.implicitWidth + 12
+                                    implicitHeight: in_pool_label.implicitHeight + 6
+                                    Label {
+                                        id: in_pool_label
+                                        anchors.centerIn: parent
+                                        text: qsTr("내 약 풀")
+                                        color: "white"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+                                }
+                            }
+                            Label {
+                                text: qsTr("코드: ") + model.item_code
+                                font.pixelSize: 12
+                                color: "#5B6478"
+                            }
+                            Label {
+                                text: qsTr("매칭: ") + (model.match_keys || qsTr("-"))
+                                font.pixelSize: 12
+                                color: "#5B6478"
+                                visible: model.match_keys && model.match_keys.length > 0
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 2
+
+                            Label {
+                                text: Math.round(model.confidence * 100) + "%"
+                                font.pixelSize: 22
+                                font.bold: true
+                                color: "#0F4C81"
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+                            Label {
+                                text: qsTr("신뢰도")
+                                font.pixelSize: 10
+                                color: "#5B6478"
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+                        }
+                    }
+                }
+            }
+
+            Label {
+                visible: candidates_list.count === 0
+                text: qsTr("(식별 후보 없음)")
+                font.pixelSize: 13
+                color: "#9E9E9E"
+            }
+
+            // ===== DUR 결과 안내 =====
             Label {
                 Layout.fillWidth: true
+                Layout.topMargin: 12
                 text: pill_controller.dur_result === "risk_found"
                       ? qsTr("⚠ DUR 위험 검출됨 — 아래 안내를 확인하세요.")
                       : qsTr("DUR에 등록 확인되지 않았습니다. 안심을 위해 약사·의사 상담을 권유드립니다.")
                 font.pixelSize: 16
+                font.bold: true
                 wrapMode: Text.WordWrap
                 color: pill_controller.dur_result === "risk_found" ? "#C62828" : "#2E7D32"
             }
 
-            // (위험 케이스 시) DurAlertCard 표시 자리
-            // Repeater 로 dur_detail_list_model 바인딩 예정 (TODO: 모델 컨텍스트 등록 후)
-            Label {
+            // DUR 상세 — pill_controller.dur_details 바인딩
+            ListView {
+                id: dur_list
+                Layout.fillWidth: true
+                Layout.preferredHeight: contentHeight
+                interactive: false
                 visible: pill_controller.dur_result === "risk_found"
-                text: qsTr("(DUR 상세 카드는 dur_detail_list_model 컨텍스트 등록 후 Repeater로 표시)")
-                font.pixelSize: 12
-                color: "#9E9E9E"
+                model: pill_controller.dur_details
+                spacing: 8
+
+                delegate: DurAlertCard {
+                    width: dur_list.width
+                    dur_type:        model.dur_type
+                    drug_a_name:     model.drug_a_name
+                    drug_b_name:     model.drug_b_name
+                    prohibit_reason: model.prohibit_reason
+                    action_message:  model.action_message
+                }
             }
 
-            // 후보 리스트 자리 (PillCandidateListModel 바인딩 예정)
-            Label {
-                text: qsTr("(식별 후보 리스트는 pill_candidate_list_model 등록 후 ListView로 표시)")
-                font.pixelSize: 12
-                color: "#9E9E9E"
-            }
-
+            // ===== 액션 버튼 =====
             RowLayout {
                 Layout.fillWidth: true
+                Layout.topMargin: 16
                 spacing: 16
 
                 AppButton {
                     text: qsTr("복용 기록 남기기")
                     Layout.fillWidth: true
-                    onClicked: {
-                        // TODO: 복약 이력 기록 다이얼로그
-                        app_controller.show_toast(qsTr("복용 기록 — TODO"))
-                    }
+                    enabled: candidates_list.count > 0
+                    onClicked: record_dialog.open()
                 }
 
                 AppButton {
@@ -89,5 +194,86 @@ Page {
                 }
             }
         }
+    }
+
+    // ===== 복약 이력 기록 다이얼로그 =====
+    // 식별된 첫 후보의 item_code 로 history_controller.record() 호출.
+    // 사용자는 개수·메모만 입력.
+    Dialog {
+        id: record_dialog
+        title: qsTr("복용 기록")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(parent.width * 0.9, 480)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        // 첫 후보 item_code/drug_name 캐시 (다이얼로그 열 때 갱신)
+        property string sel_item_code: ""
+        property string sel_drug_name: ""
+
+        onOpened: {
+            if (candidates_list.count > 0) {
+                var first = pill_controller.candidates.data(
+                    pill_controller.candidates.index(0, 0),
+                    Qt.UserRole + 1)   // ItemCodeRole = UserRole+1
+                sel_item_code = first || ""
+                var name = pill_controller.candidates.data(
+                    pill_controller.candidates.index(0, 0),
+                    Qt.UserRole + 2)   // DrugNameRole
+                sel_drug_name = name || ""
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Label {
+                text: qsTr("기록할 약")
+                font.pixelSize: 13
+                color: "#5B6478"
+            }
+            Label {
+                text: record_dialog.sel_drug_name.length > 0
+                      ? record_dialog.sel_drug_name + " (" + record_dialog.sel_item_code + ")"
+                      : qsTr("(후보 없음)")
+                font.pixelSize: 16
+                font.bold: true
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Label { text: qsTr("개수"); font.pixelSize: 13; color: "#5B6478"; Layout.topMargin: 8 }
+            SpinBox {
+                id: qty_input
+                from: 1; to: 99
+                value: 1
+                Layout.fillWidth: true
+            }
+
+            Label { text: qsTr("메모 (선택)"); font.pixelSize: 13; color: "#5B6478"; Layout.topMargin: 8 }
+            TextField {
+                id: memo_input
+                placeholderText: qsTr("예: 아침 식후 30분")
+                Layout.fillWidth: true
+            }
+        }
+
+        onAccepted: {
+            if (sel_item_code.length === 0) {
+                app_controller.show_toast(qsTr("기록할 약이 없습니다."))
+                return
+            }
+            history_controller.record(sel_item_code, qty_input.value, memo_input.text)
+            app_controller.show_toast(qsTr("복용 기록 요청 전송됨"))
+            memo_input.text = ""
+            qty_input.value = 1
+        }
+    }
+
+    Connections {
+        target: history_controller
+        function onRecord_succeeded() { app_controller.show_toast(qsTr("복용 기록 저장 완료")) }
+        function onRecord_failed(code) { app_controller.show_toast(qsTr("복용 기록 실패: ") + code) }
     }
 }

@@ -3,8 +3,9 @@
 // =====================================================
 // 두 가지 식별 흐름 지원:
 //   1. PC 트리거 캡쳐 — capture_and_identify()
-//      adb screencap → 메모리 PNG → 메인서버 업로드 → 결과 표시
-//   2. 폰 PWA 흐름 — PhoneServer 가 받은 사진을 자동 처리 (TODO)
+//      adb screencap → 메모리 PNG → 메인서버 intent → 보관 PC PUT → commit → identify
+//   2. 폰 PWA 흐름 — PhoneServer::handle_media_image 가 raw binary 받아
+//      자동으로 intent → PUT → commit 트리거. 별도 identify(request_id) 호출 가능.
 // =====================================================
 #pragma once
 
