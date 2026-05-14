@@ -14,6 +14,7 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QLoggingCategory>
+#include <QProcessEnvironment>
 
 // Backend - Service
 #include "ApiClient.h"
@@ -45,7 +46,9 @@
 // =====================================================
 // 상수
 // =====================================================
-constexpr quint16 PHONE_ADAPTER_PORT = 8000;
+constexpr quint16 phone_port_DEFAULT = 8000;
+// 폰 측 8000 점유 등으로 충돌 시 MEDIBRIDGE_PHONE_PORT=18000 같이 오버라이드.
+// 환경변수로 받으면 PhoneServer + adb reverse + 로그까지 일괄 적용.
 const QString DEFAULT_MAIN_SERVER_URL = QStringLiteral("http://10.10.10.97:8001/");
 constexpr int RESOURCE_MONITOR_INTERVAL_MS = 10000;
 constexpr int HEALTH_CHECK_INTERVAL_MS = 30000;
@@ -58,6 +61,23 @@ int main(int argc, char *argv[])
     QGuiApplication::setApplicationName("MediBridgeClient");
     QGuiApplication::setOrganizationName("MediBridge");
     QGuiApplication::setApplicationVersion("0.1.0");
+
+    // PhoneAdapter 포트 결정 — 환경변수 MEDIBRIDGE_PHONE_PORT 우선
+    quint16 phone_port = phone_port_DEFAULT;
+    {
+        const QString env_val = QProcessEnvironment::systemEnvironment()
+                                .value(QStringLiteral("MEDIBRIDGE_PHONE_PORT"));
+        if (!env_val.isEmpty()) {
+            bool ok = false;
+            const int n = env_val.toInt(&ok);
+            if (ok && n > 0 && n < 65536) {
+                phone_port = static_cast<quint16>(n);
+                qInfo() << "[Main] MEDIBRIDGE_PHONE_PORT 적용 →" << phone_port;
+            } else {
+                qWarning() << "[Main] MEDIBRIDGE_PHONE_PORT 무효 값 무시:" << env_val;
+            }
+        }
+    }
 
     // 2. Material 스타일 설정 (Q2=A 결정)
     QQuickStyle::setStyle("Material");
@@ -76,7 +96,7 @@ int main(int argc, char *argv[])
     // 5. PhoneAdapter HTTP 서버 시작 (폰 PWA 수신)
     //    utterance_forwarder 주입 — 폰 STT 텍스트 수신 시 GUI VoiceController 도 함께 갱신
     medibridge::phone::PhoneServer phone_server(&api_client, &utterance_forwarder);
-    if (!phone_server.start_server(PHONE_ADAPTER_PORT)) {
+    if (!phone_server.start_server(phone_port)) {
         qCritical() << "[Main] PhoneAdapter 서버 시작 실패 — 종료";
         return 1;
     }
@@ -89,7 +109,7 @@ int main(int argc, char *argv[])
 
     // 7. PhoneLink — USB 유선 연동 자동화 (Q4=C: 자동+수동)
     medibridge::phonelink::AdbDeviceMonitor adb_monitor(ADB_DEVICE_POLL_INTERVAL_MS);
-    medibridge::phonelink::AdbReverseManager adb_reverse(PHONE_ADAPTER_PORT);
+    medibridge::phonelink::AdbReverseManager adb_reverse(phone_port);
     medibridge::phonelink::PhoneCaptureService phone_capture_service;   // PC 트리거 화면 캡쳐
     adb_monitor.start();
 
@@ -147,7 +167,7 @@ int main(int argc, char *argv[])
     auth_controller.restore_session();
 
     qInfo() << "[Main] MediBridge Client 시작됨";
-    qInfo() << "[Main]   - PhoneAdapter port:" << PHONE_ADAPTER_PORT;
+    qInfo() << "[Main]   - PhoneAdapter port:" << phone_port;
     qInfo() << "[Main]   - MainServer url:" << DEFAULT_MAIN_SERVER_URL;
     qInfo() << "[Main]   - QML: qrc:/Frontend/Main.qml";
 
