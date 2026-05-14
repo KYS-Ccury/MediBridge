@@ -272,6 +272,13 @@ QHttpServerResponse PhoneServer::handle_speech_utterance(const QHttpServerReques
 
     qInfo().nospace() << "[PhoneServer] POST /v1/speech/utterance — len=" << text.size()
                       << " ctx=" << context;
+    // dev 로깅 — 앞 80자 미리보기 (실제 배포 시 빌드 플래그로 비활성 가능)
+    {
+        QString preview = text.left(80);
+        if (text.size() > 80) preview += QStringLiteral("...");
+        qInfo().noquote().nospace()
+            << "[PhoneServer][DEV] text=\"" << preview << "\"";
+    }
 
     // ⭐ UtteranceForwarder 경유 — 메인서버 forward + GUI 시그널(utterance_received) 동시 발신
     //   VoiceController 가 이 시그널을 받아 current_text 갱신 → VoiceInputPage 표시.

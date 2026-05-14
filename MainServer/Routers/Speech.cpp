@@ -7,6 +7,7 @@
 #include "../Services/Auth/JwtIssuer.h"
 
 #include <drogon/HttpResponse.h>
+#include <trantor/utils/Logger.h>
 
 using medibridge::Config;
 namespace AuthSvc = medibridge::services::auth;
@@ -90,6 +91,28 @@ void Speech::handle_utterance(const drogon::HttpRequestPtr& req,
         ? schemas::IntentCategory::OTHER
         : classify(reqobj.text);
     resp.intent.confidence = resp.injection_flag ? 0.30 : 0.85;
+
+    // ⭐ TestMode 한정 dev 로깅 — 본문 일부 + 분류 결과
+    //   PII 보호 정책상 production 에서는 절대 본문 안 찍음.
+    //   TestMode 에서만 통합 검증을 위해 앞 80자 + 길이 + 분류 결과 출력.
+    if (Config::instance().test_mode()) {
+        std::string preview = reqobj.text.substr(0, 80);
+        if (reqobj.text.size() > 80) preview += "...";
+        const char* cat_str = "OTHER";
+        switch (resp.intent.category) {
+            case schemas::IntentCategory::PILL_IDENTIFY:    cat_str = "PILL_IDENTIFY"; break;
+            case schemas::IntentCategory::RISK_CHECK:       cat_str = "RISK_CHECK"; break;
+            case schemas::IntentCategory::INFO_LOOKUP:      cat_str = "INFO_LOOKUP"; break;
+            case schemas::IntentCategory::REGISTER_REQUEST: cat_str = "REGISTER_REQUEST"; break;
+            case schemas::IntentCategory::HISTORY_QUERY:    cat_str = "HISTORY_QUERY"; break;
+            case schemas::IntentCategory::REPORT_REQUEST:   cat_str = "REPORT_REQUEST"; break;
+            default: break;
+        }
+        LOG_INFO << "[Speech][DEV] len=" << reqobj.text.size()
+                 << " cat=" << cat_str
+                 << " inj=" << (resp.injection_flag ? "Y" : "N")
+                 << " text=\"" << preview << "\"";
+    }
 
     resp.follow_up_action.type   = "NONE";
     resp.follow_up_action.params = Json::Value(Json::objectValue);
