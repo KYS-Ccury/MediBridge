@@ -14,6 +14,15 @@ AdbDeviceMonitor::AdbDeviceMonitor(int interval_ms, QObject* parent)
     connect(&timer_, &QTimer::timeout, this, &AdbDeviceMonitor::on_poll_timer);
     connect(&process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &AdbDeviceMonitor::on_process_finished);
+            
+    // 💡 [추가됨] 윈도우에서 adb를 찾지 못할 때 원인을 파악하기 위한 에러 처리
+    connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            qCritical() << "[AdbDeviceMonitor] ❌ adb 실행 실패! (Windows 환경 변수 PATH에 platform-tools 경로가 등록되어 있는지 확인하세요)";
+        } else {
+            qWarning() << "[AdbDeviceMonitor] adb 프로세스 에러:" << error;
+        }
+    });
 }
 
 AdbDeviceMonitor::~AdbDeviceMonitor()
@@ -38,6 +47,7 @@ void AdbDeviceMonitor::refresh_now()
     if (process_.state() != QProcess::NotRunning) {
         return;     // 진행 중이면 스킵
     }
+    // 윈도우에서는 "adb" (또는 "adb.exe")로 실행
     process_.start("adb", {"devices"});
 }
 
@@ -67,29 +77,32 @@ void AdbDeviceMonitor::on_process_finished(int /*exit_code*/, QProcess::ExitStat
     }
 }
 
+// 💡 [수정됨] 데몬 시작 메시지 등 불필요한 출력을 무시하도록 견고하게 개선
 QPair<QString, QString> AdbDeviceMonitor::parse_adb_output(const QString& output)
 {
-    // 예시 출력:
-    //   List of devices attached
-    //   R3CXXXXXXX     device
-    //
-    // 또는:
-    //   List of devices attached
-    //   R3CXXXXXXX     unauthorized
-    //
-    // 또는 (연결 없음):
-    //   List of devices attached
-    //
     const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    bool list_started = false;
+
     for (const QString& raw : lines) {
         const QString line = raw.trimmed();
-        if (line.startsWith("List of devices") || line.isEmpty()) {
+
+        // "List of devices attached" 이후의 줄만 기기 정보로 취급
+        if (line.startsWith("List of devices")) {
+            list_started = true;
             continue;
         }
-        const QStringList parts = line.split(QRegularExpression("\\s+"),
-                                             Qt::SkipEmptyParts);
+
+        // 데몬 시작 로그나 공백은 무시
+        if (!list_started || line.startsWith("* daemon") || line.isEmpty()) {
+            continue;
+        }
+
+        const QStringList parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         if (parts.size() >= 2) {
-            return {parts[0], parts[1]};
+            // 시리얼 넘버가 '*' 같은 특수문자로 시작하지 않는지 한 번 더 가드
+            if (!parts[0].startsWith('*')) {
+                return {parts[0], parts[1]};
+            }
         }
     }
     return {"", ""};

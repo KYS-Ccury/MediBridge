@@ -13,5 +13,6 @@
         <file>Components/ConfidenceTierBadge.qml</file>
         <file>Components/DurAlertCard.qml</file>
         <file>Components/PhoneStatusIndicator.qml</file>
+        <file>Pages/CameraPage.qml</file> <file>Pages/IdentifyResultPage.qml</file>
     </qresource>
 </RCC>
