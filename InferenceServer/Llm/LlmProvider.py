@@ -1,15 +1,19 @@
 """
-LlmProvider — LLM 백엔드 추상화
+LlmProvider — LLM 백엔드 추상화 + 3-모드 선택
 
-목적:
-    - OpenAI (gpt-4.1-nano, 기본) ↔ Ollama (gemma4:e4b, fallback) 전환을
-      환경변수 한 줄로 가능하게 함. 라우터 코드는 본 인터페이스에만 의존.
+3가지 모드 (환경변수 MEDIBRIDGE_LLM_BACKEND):
+    - "ollama" — 로컬 Ollama 만 사용 (gemma4:e4b 등). 외부 송신 X. Fallback 없음.
+    - "openai" — OpenAI API 만 사용 (gpt-4.1-nano). 인터넷 의존. Fallback 없음.
+    - "auto"   — OpenAI 우선 + 실패 시 자동 Ollama fallback.
+                 API_KEY_MISSING / 401 / 429 / 5xx / TIMEOUT / EXCEPTION 발생 시 전환.
+
+사용자가 명시적으로 mode 선택 — 무조건 fallback 아님.
 
 사용:
     from Llm.LlmProvider import make_provider
     provider = make_provider()
     resp = provider.chat(system="...", user="...", format="json")
-    print(resp.json_obj)
+    print(resp.provider, resp.error, resp.json_obj)
 """
 from __future__ import annotations
 
@@ -63,6 +67,75 @@ class LlmProvider(Protocol):
 
 _provider: Optional[LlmProvider] = None
 
+# auto 모드에서 fallback 트리거 에러 코드 — 일시적·복구 가능 한 종류만
+_FALLBACK_TRIGGER_ERRORS = {
+    "API_KEY_MISSING",       # OpenAI Key 미설정
+    "API_ERROR_401",         # 인증 실패
+    "API_ERROR_429",         # rate limit
+    "TIMEOUT",               # 응답 타임아웃
+    "EXCEPTION",             # 네트워크·DNS 등 일반 예외
+}
+
+
+def _is_fallback_trigger(err: Optional[str]) -> bool:
+    if not err:
+        return False
+    if err in _FALLBACK_TRIGGER_ERRORS:
+        return True
+    # 5xx 류 (API_ERROR_500 ~ 599) 도 fallback
+    if err.startswith("API_ERROR_5"):
+        return True
+    return False
+
+
+class FallbackProvider:
+    """
+    Primary 호출 → 실패(_FALLBACK_TRIGGER_ERRORS) 시 Secondary 로 자동 전환.
+
+    auto 모드 전용 — 사용자가 backend="auto" 선택했을 때만 사용.
+    primary 가 정상이면 secondary 는 lazy init (메모리 절약).
+    """
+
+    def __init__(self, primary: "LlmProvider", secondary_factory):
+        self._primary = primary
+        self._secondary_factory = secondary_factory
+        self._secondary = None    # lazy
+        # primary 가 살아있는 한 secondary 로 stick 하지 않음 (매번 primary 재시도).
+        # → "OpenAI 가 일시 장애였다" 케이스 자동 회복.
+
+    @property
+    def name(self) -> str:
+        return f"auto({self._primary.name})"
+
+    @property
+    def model(self) -> str:
+        return self._primary.model
+
+    def _get_secondary(self):
+        if self._secondary is None:
+            self._secondary = self._secondary_factory()
+            logger.info(f"[LlmProvider] fallback secondary 활성화: {self._secondary.name}/{self._secondary.model}")
+        return self._secondary
+
+    def chat(self, **kwargs) -> "ChatResponse":
+        resp = self._primary.chat(**kwargs)
+        if not _is_fallback_trigger(resp.error):
+            return resp
+        logger.warning(
+            f"[LlmProvider] primary 실패 ({resp.error}) → fallback 시도"
+        )
+        sec = self._get_secondary()
+        fb_resp = sec.chat(**kwargs)
+        # primary 실패 흔적 보존
+        fb_resp.provider = f"{self.name}->{sec.name}"
+        return fb_resp
+
+    def health(self) -> bool:
+        # primary 가 살아있으면 OK. 죽었어도 secondary 살아있으면 OK.
+        if self._primary.health():
+            return True
+        return self._get_secondary().health()
+
 
 def make_provider() -> LlmProvider:
     """싱글톤 Provider — 시작 시 1회 호출. 환경변수로 결정."""
@@ -76,13 +149,27 @@ def make_provider() -> LlmProvider:
     if backend == "openai":
         from Llm.OpenAIProvider import OpenAIProvider
         _provider = OpenAIProvider()
-        logger.info(f"[LlmProvider] backend=OpenAI model={cfg.openai_model}")
+        logger.info(f"[LlmProvider] backend=OpenAI (단독) model={cfg.openai_model}")
     elif backend == "ollama":
         from Llm.OllamaProvider import OllamaProvider
         _provider = OllamaProvider()
-        logger.info(f"[LlmProvider] backend=Ollama model={cfg.ollama_model} host={cfg.ollama_host}")
+        logger.info(f"[LlmProvider] backend=Ollama (단독) model={cfg.ollama_model} host={cfg.ollama_host}")
+    elif backend in ("auto", "openai_fallback_ollama"):
+        from Llm.OpenAIProvider import OpenAIProvider
+        from Llm.OllamaProvider import OllamaProvider
+        primary = OpenAIProvider()
+        _provider = FallbackProvider(
+            primary=primary,
+            secondary_factory=lambda: OllamaProvider(),
+        )
+        logger.info(
+            f"[LlmProvider] backend=auto — primary=OpenAI({cfg.openai_model}) "
+            f"fallback=Ollama({cfg.ollama_model})"
+        )
     else:
-        raise ValueError(f"Unknown LLM backend: {backend} (expected: openai|ollama)")
+        raise ValueError(
+            f"Unknown LLM backend: {backend} (expected: ollama|openai|auto)"
+        )
 
     return _provider
 

@@ -69,6 +69,11 @@ class OllamaProvider:
             "options": {
                 "temperature": temperature if temperature is not None else self._default_temp,
             },
+            # Qwen3.5 등 reasoning 모델의 chain-of-thought 비활성 (응답 시간 ↓).
+            # 무관한 모델은 무시 — 호환성 안전.
+            "think": False,
+            # 모델을 메모리에 1시간 유지 — 콜드 스타트 회피 (기본 5분).
+            "keep_alive": "1h",
         }
         if format == "json":
             payload["format"] = "json"
