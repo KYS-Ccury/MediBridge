@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 from loguru import logger
 
-TARGET_MIN_SIDE = 240   # 업스케일 기준 (짧은 변 px)
+TARGET_MIN_SIDE = 384   # 업스케일 기준 (짧은 변 px) — R3: 240→384
 
 
 @dataclass
@@ -105,25 +105,67 @@ class OcrEngine:
             return ("각인없음", 0.0)
         return self.recognize_array(img)
 
+    @staticmethod
+    def _variants(crop_bgr: np.ndarray):
+        """⭐ R3 — 다변형 전처리. 음각/양각 각인은 한 가지 전처리로
+        안정적이지 않아 여러 변형을 시도하고 best 를 채택한다."""
+        base = OcrEngine._preprocess(crop_bgr)          # 업스케일+CLAHE+Unsharp
+        yield ("pre", base)
+        try:
+            g = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY)
+            # 강한 CLAHE
+            ce = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8)).apply(g)
+            yield ("clahe4", cv2.cvtColor(ce, cv2.COLOR_GRAY2BGR))
+            # Otsu 이진화 + 반전본 (음각/양각 양방향)
+            _, ot = cv2.threshold(ce, 0, 255,
+                                  cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            yield ("otsu", cv2.cvtColor(ot, cv2.COLOR_GRAY2BGR))
+            yield ("otsu_inv", cv2.cvtColor(255 - ot, cv2.COLOR_GRAY2BGR))
+            # adaptive threshold (국소 — 곡면 음각에 강함)
+            at = cv2.adaptiveThreshold(
+                ce, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 31, 5)
+            yield ("adapt", cv2.cvtColor(at, cv2.COLOR_GRAY2BGR))
+            # black-hat (양각/음각 그림자 강조)
+            k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+            bh = cv2.morphologyEx(ce, cv2.MORPH_BLACKHAT, k)
+            bh = cv2.normalize(bh, None, 0, 255, cv2.NORM_MINMAX)
+            yield ("blackhat", cv2.cvtColor(bh, cv2.COLOR_GRAY2BGR))
+        except Exception:
+            pass
+
     def recognize_array(self, crop_bgr: np.ndarray) -> Tuple[str, float]:
-        """numpy BGR crop → 각인 텍스트, 평균 신뢰도."""
+        """numpy BGR crop → 각인 텍스트, 평균 신뢰도.
+
+        ⭐ R3 — 다변형 전처리 중 best 채택. 점수 = Σ(conf) (라인이
+        많고 신뢰도 높은 결과 선호). 너무 긴 잡음 방지 위해 영숫자
+        12자 초과는 감점.
+        """
         if not self.is_loaded or self.engine is None:
             return ("각인없음", 0.0)
         if crop_bgr is None or crop_bgr.size == 0:
             return ("각인없음", 0.0)
 
-        pre = self._preprocess(crop_bgr)
-        lines = self._ocr_one(pre, min_confidence=0.25)
-        # 전처리본이 비면 원본도 한 번 시도 (보강 실패 대비)
-        if not lines:
-            lines = self._ocr_one(crop_bgr, min_confidence=0.25)
-        if not lines:
-            return ("각인없음", 0.0)
+        best_text, best_avg, best_score = "각인없음", 0.0, -1.0
+        for _name, var in self._variants(crop_bgr):
+            lines = self._ocr_one(var, min_confidence=0.30)
+            if not lines:
+                continue
+            sl = sorted(lines, key=lambda l: l.confidence, reverse=True)
+            text = " ".join(l.text for l in sl).strip()
+            alnum = "".join(ch for ch in text if ch.isalnum())
+            if not alnum:
+                continue
+            avg = sum(l.confidence for l in lines) / max(len(lines), 1)
+            score = sum(l.confidence for l in lines)
+            if len(alnum) > 12:          # 잡음 과다 결과 감점
+                score *= 0.3
+            if score > best_score:
+                best_score, best_text, best_avg = score, text, avg
 
-        avg = sum(l.confidence for l in lines) / max(len(lines), 1)
-        sorted_lines = sorted(lines, key=lambda l: l.confidence, reverse=True)
-        text = " ".join(l.text for l in sorted_lines).strip()
-        return (text or "각인없음", round(avg, 3))
+        if best_score < 0:
+            return ("각인없음", 0.0)
+        return (best_text or "각인없음", round(best_avg, 3))
 
     # ---------- 내부 ----------
 

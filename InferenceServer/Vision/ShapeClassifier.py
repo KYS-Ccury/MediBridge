@@ -34,6 +34,12 @@ def _classify_from_contour(contour: np.ndarray) -> ShapeResult:
     if contour is None or len(contour) < 5:
         return ShapeResult("기타", 0.0, 1.0, 1.0)
 
+    # ⭐ 2026-05-15 R2 — 알약은 모두 볼록(convex). convex hull 로
+    #   글자/반사 노치를 제거해 circularity·종횡비를 안정화.
+    hull = cv2.convexHull(contour)
+    if hull is not None and len(hull) >= 5:
+        contour = hull
+
     area = cv2.contourArea(contour)
     perimeter = cv2.arcLength(contour, True)
     if perimeter == 0 or area == 0:
@@ -50,12 +56,19 @@ def _classify_from_contour(contour: np.ndarray) -> ShapeResult:
     long_side = max(rw, rh)
     ratio = long_side / short_side   # 원본의 핵심 지표
 
-    # 원본 임계 그대로 + 캡슐형(매우 길쭉)만 보강
-    if ratio >= 2.5:
+    # ⭐ 2026-05-15 R2 — convex hull 적용 후 원형 알약의 minAreaRect
+    #   종횡비가 1.10~1.17 로 상승(원본 1.1 타원형 임계 침범).
+    #   원형 알약은 촬영각/크롭으로 종횡비 1.2 까지 흔들리므로
+    #   종횡비 단독 1.1 임계는 과민. circularity 와 조합해 보정:
+    #     - 매우 길쭉(>=2.3) → 캡슐형
+    #     - 장방(>=1.45) → 장방형
+    #     - 타원: 종횡비>=1.25 거나 circularity 가 낮음(<0.78)
+    #     - 그 외 → 원형 (둥근 알약의 약한 종횡비 변동 허용)
+    if ratio >= 2.3:
         label = "캡슐형"
-    elif ratio >= 1.3:
+    elif ratio >= 1.45:
         label = "장방형"
-    elif ratio >= 1.1:
+    elif ratio >= 1.25 or circularity < 0.78:
         label = "타원형"
     else:
         label = "원형"
@@ -85,6 +98,12 @@ def _largest_contour(crop_bgr: np.ndarray) -> Optional[np.ndarray]:
     center = thresh[cy0:cy1, cx0:cx1]
     if center.size > 0 and float((center > 0).mean()) < 0.5:
         thresh = cv2.bitwise_not(thresh)
+    # ⭐ 2026-05-15 R2 — 글자/반사로 생긴 전경 구멍·노치 메우기.
+    #   파란 알약의 흰 각인이 Otsu 에서 분리돼 contour 가 들쭉날쭉
+    #   (circularity 비정상 ↓) → CLOSE 로 알약 본체를 매끄럽게.
+    k = max(3, (min(h, w) // 12) | 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
     contours, _ = cv2.findContours(
         thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:

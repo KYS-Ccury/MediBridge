@@ -137,7 +137,7 @@ class YoloDetector:
           2) 추론 후 IoU·포함관계 기반 dedup 으로 같은 알약 중복 박스 병합
 
         모든 임계값은 환경변수로 튜닝 가능 (모델 재학습 불필요):
-          MEDIBRIDGE_YOLO_CONF       (기본 0.40)  검출 신뢰도 임계
+          MEDIBRIDGE_YOLO_CONF       (기본 0.15)  검출 신뢰도 임계
           MEDIBRIDGE_YOLO_IOU        (기본 0.45)  NMS IoU (낮을수록 중복 억제 ↑)
           MEDIBRIDGE_YOLO_MAX_DET    (기본 10)    최대 검출 개수
           MEDIBRIDGE_YOLO_DEDUP_IOU  (기본 0.55)  후처리 dedup IoU 임계
@@ -192,9 +192,12 @@ class YoloDetector:
             img = _white_balance_global(img)
 
         # 뷰파인더 크롭으로 카메라 UI 가 제거됐으므로 conf 를 낮춰도
-        # 안전. 0.60 → 0.40 (다중 알약 중 신뢰도 낮은 개체도 포착).
+        # 비교적 안전. R5 실험: 글로시 젤캡 등 비정형 알약은 det
+        # 신뢰도 0.17 까지 낮아 9/9 검출엔 conf≈0.15 필요.
+        # 0.40 → 0.15 (재현율 우선; 배경 오검출 위험은 뷰파인더
+        # 크롭 + 클라 ✕ 삭제 UI 로 완화. env 로 상향 조정 가능).
         conf = conf_threshold if conf_threshold is not None \
-            else _env_float("MEDIBRIDGE_YOLO_CONF", 0.40)
+            else _env_float("MEDIBRIDGE_YOLO_CONF", 0.15)
         iou = _env_float("MEDIBRIDGE_YOLO_IOU", 0.45)
         max_det = _env_int("MEDIBRIDGE_YOLO_MAX_DET", 10)
         dedup_iou = _env_float("MEDIBRIDGE_YOLO_DEDUP_IOU", 0.55)
