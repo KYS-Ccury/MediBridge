@@ -11,6 +11,48 @@
 
 ## [Unreleased]
 
+### Verified · Deployed (2026-05-15 — Vision PC 실 배포·가동·E2E 검증 완료) ⭐
+
+InferenceServer 본 구조를 Vision PC (`ai-trainer@10.10.10.120`) 의
+`/media/.../yesom/Desktop/MediBridge/InferenceServer/` 에 배포 + 가동 + 실 호출 검증 통과.
+
+**환경 확인**:
+- Python 3.12.3, CUDA 12.0, NVIDIA RTX 3060 ×2 (12GB 각각)
+- 담당자 venv 재사용 (torch 2.6.0+cu124 / ultralytics 8.4.48 / paddleocr / cv2 4.13.0)
+- 디스크 여유 1.7TB
+
+**배포 단계 실측**:
+1. **rsync** — InferenceServer/ 동기화 (37 KB, 100% 코드)
+2. **venv 재사용** — 담당자 venv 에 FastAPI 5종 추가 설치 (fastapi · uvicorn · httpx · loguru · pydantic · psutil)
+3. **가중치 매핑** — `train_single_602020/weights/best.pt` (5.4 MB) → `Models/yolo26_pills.pt`
+4. **.env** — `MEDIBRIDGE_VISION_ENABLED=true` / `LLM_ENABLED=false` / `PORT=8003`
+5. **실행** — nohup + disown 로 백그라운드 가동
+
+**가동 후 실 호출 검증**:
+```
+샘플 이미지: check_img_ih/samples/K-044727_0_2_0_0_75_000_200.png
+
+POST /vision/detect    → 검출 1건 (confidence 0.894)
+POST /vision/analyze   → 각인="820" (0.964) / 색=검정 / 모양=타원형 /
+                         크기=22.65mm / 종합 0.982 ⭐
+```
+
+**네트워크 도달성**:
+- `127.0.0.1:8003/health` → 200 OK
+- LAN 외부 `10.10.10.120:8003/health` (개발 PC 에서) → 200 OK
+- 메인서버 (10.10.10.97) → Vision PC 직접 호출 가능 상태
+
+**시스템 상태 매트릭스 (최종)**:
+| PC | IP:Port | 상태 |
+|---|---|---|
+| 메인서버 | 10.10.10.97:8001 | ✅ |
+| 데이터 보관 | 10.10.10.122:8004 | ✅ |
+| LLM 추론 | 10.10.10.128:8002 | ✅ (코드 가동 가능 — OpenAI API Key export 만) |
+| **Vision 추론** | **10.10.10.120:8003** | ✅ **실 가동 중 + E2E 검증 통과** |
+| 클라이언트 | (로컬) | ✅ |
+
+---
+
 ### Added (2026-05-15 — Vision PC 담당자 코드 이식 + /vision/detect_remote 구현)
 
 Vision PC (`10.10.10.120`) 담당자 (인효) 가 SSH `ai-trainer@10.10.10.120` 의
