@@ -228,54 +228,209 @@ Page {
         }
     }
 
-    // ===== 복약 이력 기록 다이얼로그 =====
-    // 식별된 첫 후보의 item_code 로 history_controller.record() 호출.
-    // 사용자는 개수·메모만 입력.
+    // ===== 복약 이력 기록 다이얼로그 (개편) =====
+    // 약 선택: ① 식별 결과에서 ② 내 약 풀에서 ③ 코드 직접 입력 — 3가지 소스
+    // 풀 미등록 약 → "풀 등록 + 기록" / "기록만 남기기" 분기
+    // PillCandidateListModel roles:  ItemCodeRole=UserRole+1, DrugNameRole=UserRole+2
+    // PoolItemListModel    roles:    PoolIdRole=UserRole+1, ItemCodeRole=UserRole+2, DrugNameRole=UserRole+3
     Dialog {
         id: record_dialog
         title: qsTr("복용 기록")
         modal: true
         anchors.centerIn: parent
-        width: Math.min(parent.width * 0.9, 480)
+        width: Math.min(parent.width * 0.9, 560)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
-        // 첫 후보 item_code/drug_name 캐시 (다이얼로그 열 때 갱신)
         property string sel_item_code: ""
         property string sel_drug_name: ""
+        property bool   in_pool: false
+
+        // 입력 코드 → 내 약 풀에 있는지 검사
+        function check_in_pool(code) {
+            if (!code || code.length === 0) return false
+            var m = pill_controller.pool_items
+            for (var i = 0; i < m.rowCount(); i++) {
+                var c = m.data(m.index(i, 0), Qt.UserRole + 2)   // PoolItemListModel.ItemCodeRole
+                if (c === code) return true
+            }
+            return false
+        }
+
+        function set_selection(code, name) {
+            sel_item_code = code || ""
+            sel_drug_name = (name && name.length > 0) ? name : qsTr("(이름 미상)")
+            in_pool = check_in_pool(sel_item_code)
+        }
 
         onOpened: {
+            // 약 풀 최신화 (다른 페이지에서 추가됐을 수 있음)
+            pill_controller.load_pool(false)
+            // 기본값: 식별 첫 후보
             if (candidates_list.count > 0) {
-                var first = pill_controller.candidates.data(
-                    pill_controller.candidates.index(0, 0),
-                    Qt.UserRole + 1)   // ItemCodeRole = UserRole+1
-                sel_item_code = first || ""
-                var name = pill_controller.candidates.data(
-                    pill_controller.candidates.index(0, 0),
-                    Qt.UserRole + 2)   // DrugNameRole
-                sel_drug_name = name || ""
+                var c = pill_controller.candidates.data(
+                    pill_controller.candidates.index(0, 0), Qt.UserRole + 1)
+                var n = pill_controller.candidates.data(
+                    pill_controller.candidates.index(0, 0), Qt.UserRole + 2)
+                set_selection(c, n)
+            } else {
+                set_selection("", "")
             }
+            source_candidate.checked = true
+            manual_code_input.text = ""
+            qty_input.value = 1
+            memo_input.text = ""
+            action_register_and_record.checked = true
         }
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 12
+            spacing: 10
 
+            // ----- 1) 소스 선택 -----
             Label {
-                text: qsTr("기록할 약")
+                text: qsTr("약 선택 방법")
                 font.pixelSize: 13
                 color: "#5B6478"
-            }
-            Label {
-                text: record_dialog.sel_drug_name.length > 0
-                      ? record_dialog.sel_drug_name + " (" + record_dialog.sel_item_code + ")"
-                      : qsTr("(후보 없음)")
-                font.pixelSize: 16
                 font.bold: true
-                wrapMode: Text.WordWrap
+            }
+            ButtonGroup { id: source_group }
+            RowLayout {
                 Layout.fillWidth: true
+                spacing: 12
+                RadioButton {
+                    id: source_candidate
+                    text: qsTr("식별 결과")
+                    ButtonGroup.group: source_group
+                    enabled: candidates_list.count > 0
+                }
+                RadioButton {
+                    id: source_pool
+                    text: qsTr("내 약 풀")
+                    ButtonGroup.group: source_group
+                }
+                RadioButton {
+                    id: source_manual
+                    text: qsTr("직접 입력")
+                    ButtonGroup.group: source_group
+                }
             }
 
-            Label { text: qsTr("개수"); font.pixelSize: 13; color: "#5B6478"; Layout.topMargin: 8 }
+            // ----- 2-a) 식별 결과 ComboBox -----
+            ComboBox {
+                visible: source_candidate.checked
+                Layout.fillWidth: true
+                model: pill_controller.candidates
+                textRole: "drug_name"
+                onActivated: function(idx) {
+                    var m = pill_controller.candidates
+                    var c = m.data(m.index(idx, 0), Qt.UserRole + 1)
+                    var n = m.data(m.index(idx, 0), Qt.UserRole + 2)
+                    record_dialog.set_selection(c, n)
+                }
+                Component.onCompleted: {
+                    if (count > 0 && source_candidate.checked) currentIndex = 0
+                }
+            }
+
+            // ----- 2-b) 내 약 풀 ComboBox -----
+            ComboBox {
+                id: pool_combo
+                visible: source_pool.checked
+                Layout.fillWidth: true
+                model: pill_controller.pool_items
+                textRole: "drug_name"
+                onActivated: function(idx) {
+                    var m = pill_controller.pool_items
+                    var c = m.data(m.index(idx, 0), Qt.UserRole + 2)  // ItemCodeRole
+                    var n = m.data(m.index(idx, 0), Qt.UserRole + 3)  // DrugNameRole
+                    record_dialog.set_selection(c, n)
+                }
+                onVisibleChanged: {
+                    // 풀 소스로 바꿔 보일 때 첫 항목으로 자동 선택
+                    if (visible && count > 0) {
+                        currentIndex = 0
+                        var m = pill_controller.pool_items
+                        var c = m.data(m.index(0, 0), Qt.UserRole + 2)
+                        var n = m.data(m.index(0, 0), Qt.UserRole + 3)
+                        record_dialog.set_selection(c, n)
+                    } else if (visible && count === 0) {
+                        record_dialog.set_selection("", "")
+                    }
+                }
+            }
+            Label {
+                visible: source_pool.checked && pool_combo.count === 0
+                text: qsTr("(내 약 풀이 비어 있습니다)")
+                color: "#9E9E9E"
+                font.pixelSize: 12
+            }
+
+            // ----- 2-c) 직접 입력 -----
+            TextField {
+                id: manual_code_input
+                visible: source_manual.checked
+                Layout.fillWidth: true
+                placeholderText: qsTr("품목기준코드 (예: 999800001)")
+                inputMethodHints: Qt.ImhDigitsOnly
+                onTextChanged: {
+                    if (source_manual.checked) {
+                        record_dialog.set_selection(text.trim(), qsTr("(직접 입력)"))
+                    }
+                }
+            }
+
+            // ----- 3) 선택 요약 + 풀 상태 -----
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                color: record_dialog.in_pool ? "#E8F5E9" : "#FFF3E0"
+                border.color: record_dialog.in_pool ? "#A5D6A7" : "#FFCC80"
+                radius: 6
+                implicitHeight: summary_label.implicitHeight + 16
+                Label {
+                    id: summary_label
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    text: record_dialog.sel_item_code.length === 0
+                          ? qsTr("(약을 선택해주세요)")
+                          : record_dialog.sel_drug_name + " (" + record_dialog.sel_item_code + ")  ·  "
+                            + (record_dialog.in_pool
+                               ? qsTr("내 약 풀 ✓")
+                               : qsTr("풀에 없음 ⚠"))
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 13
+                    color: record_dialog.in_pool ? "#2E7D32" : "#E65100"
+                }
+            }
+
+            // ----- 4) 풀 미등록 시 처리 분기 -----
+            ColumnLayout {
+                visible: !record_dialog.in_pool && record_dialog.sel_item_code.length > 0
+                Layout.fillWidth: true
+                spacing: 4
+                Layout.topMargin: 4
+
+                Label {
+                    text: qsTr("내 약 풀에 없는 약입니다. 어떻게 처리할까요?")
+                    font.pixelSize: 12
+                    color: "#5B6478"
+                }
+                ButtonGroup { id: action_group }
+                RadioButton {
+                    id: action_register_and_record
+                    text: qsTr("내 약 풀에 등록 + 복용 기록")
+                    ButtonGroup.group: action_group
+                    checked: true
+                }
+                RadioButton {
+                    id: action_record_only
+                    text: qsTr("기록만 남기기 (풀에 등록하지 않음)")
+                    ButtonGroup.group: action_group
+                }
+            }
+
+            // ----- 5) 개수 -----
+            Label { text: qsTr("개수"); font.pixelSize: 13; color: "#5B6478"; Layout.topMargin: 6 }
             SpinBox {
                 id: qty_input
                 from: 1; to: 99
@@ -283,23 +438,29 @@ Page {
                 Layout.fillWidth: true
             }
 
-            Label { text: qsTr("메모 (선택)"); font.pixelSize: 13; color: "#5B6478"; Layout.topMargin: 8 }
+            // ----- 6) 메모 -----
+            Label { text: qsTr("메모 (선택)"); font.pixelSize: 13; color: "#5B6478"; Layout.topMargin: 6 }
             TextField {
                 id: memo_input
-                placeholderText: qsTr("예: 아침 식후 30분")
+                placeholderText: qsTr("예: 점심 식후 / 가벼운 두통")
                 Layout.fillWidth: true
             }
         }
 
         onAccepted: {
-            if (sel_item_code.length === 0) {
-                app_controller.show_toast(qsTr("기록할 약이 없습니다."))
+            if (record_dialog.sel_item_code.length === 0) {
+                app_controller.show_toast(qsTr("기록할 약을 선택해주세요."))
                 return
             }
-            history_controller.record(sel_item_code, qty_input.value, memo_input.text)
+            // 풀에 없는 약 + 사용자가 등록을 원함 → 풀 등록 먼저 (fire-and-forget)
+            //   추후 동기화가 필요하면 pool_changed 시그널 후 record 로 변경 가능.
+            if (!record_dialog.in_pool && action_register_and_record.checked) {
+                console.log("[record_dialog] 풀 등록 + 기록:", record_dialog.sel_item_code)
+                pill_controller.add_to_pool(record_dialog.sel_item_code, "MANUAL")
+            }
+            history_controller.record(record_dialog.sel_item_code,
+                                      qty_input.value, memo_input.text)
             app_controller.show_toast(qsTr("복용 기록 요청 전송됨"))
-            memo_input.text = ""
-            qty_input.value = 1
         }
     }
 
