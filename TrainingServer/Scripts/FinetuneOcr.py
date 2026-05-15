@@ -191,8 +191,33 @@ def main() -> int:
     env = dict(os.environ)
     env.setdefault("CUDA_VISIBLE_DEVICES", "0")
 
-    run([sys.executable, "tools/train.py", "-c", cfg_path],
-        cwd=repo, env=env)
+    # ⭐ 라이브 추론과 GPU 공유 → 데모 스파이크로 OOM 사망 가능.
+    #   체크포인트에서 자동 resume + 재시도로 15h 투자 보호.
+    #   PaddleOCR 는 save_dir/latest.pdparams 를 주기 저장.
+    import time
+    max_retries = 0 if args.smoke else 8
+    attempt = 0
+    while True:
+        cmd = [sys.executable, "tools/train.py", "-c", cfg_path]
+        latest = save_dir / "latest.pdparams"
+        if latest.exists():
+            # resume: checkpoints 지정 시 그 지점부터 이어서 학습
+            cmd += ["-o", f"Global.checkpoints={save_dir}/latest"]
+            print(f"[resume] {latest} 에서 재개 (attempt {attempt})",
+                  flush=True)
+        try:
+            run(cmd, cwd=repo, env=env)
+            break                       # 정상 종료
+        except subprocess.CalledProcessError as e:
+            attempt += 1
+            if attempt > max_retries:
+                print(f"[fail] 재시도 {max_retries} 초과 — 중단", flush=True)
+                raise
+            print(f"[retry] 학습 비정상 종료(OOM 등) — "
+                  f"{attempt}/{max_retries}, 60s 후 체크포인트 재개",
+                  flush=True)
+            time.sleep(60)              # GPU 점유 프로세스 해소 대기
+
     run([sys.executable, "tools/export_model.py", "-c", cfg_path,
          "-o", f"Global.pretrained_model={save_dir}/best_accuracy",
          f"Global.save_inference_dir={infer_dir}"],
