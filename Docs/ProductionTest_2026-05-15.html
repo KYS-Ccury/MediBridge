@@ -1,8 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8"/><title>MediBridge Production Test</title>
 <style>
 @page { size: A4; margin: 18mm 14mm; }
-body { font-family: 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif; color: #1A2238; line-height: 1.55; font-size: 11pt; }
+body {
+  font-family: 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif;
+  color: #1A2238; line-height: 1.55; font-size: 11pt;
+}
 h1 { color: #0F4C81; font-size: 18pt; border-bottom: 3px solid #0F4C81; padding-bottom: 6px; }
 h2 { color: #0F4C81; font-size: 14pt; margin-top: 24px; border-bottom: 1px solid #D5DCE4; padding-bottom: 4px; }
 h3 { color: #1A2238; font-size: 12pt; margin-top: 16px; }
@@ -16,6 +19,8 @@ tr:nth-child(even) td { background: #FAFBFC; }
 blockquote { border-left: 4px solid #0F4C81; padding: 4px 10px; background: #F0F7FF; margin: 8px 0; }
 ul, ol { padding-left: 22px; }
 hr { border: 0; border-top: 1px solid #D5DCE4; margin: 16px 0; }
+.passed { color: #2E7D32; font-weight: bold; }
+.failed { color: #C62828; font-weight: bold; }
 </style></head><body><h1>MediBridge — Production 모드 전체 기능 검증 보고서</h1>
 <table>
 <thead>
@@ -887,8 +892,74 @@ done
 <li><code>MainServer/Routers/Report.cpp</code> — IN 절 SQL bind 버그 수정 (5개+ 약 종류 지원)</li>
 </ul>
 <hr />
+<h2>8.1 추가 사용자 피드백 반영 (2026-05-15 PM)</h2>
+<p>세 가지 후속 질문에 대한 정직한 상태 및 조치:</p>
+<h3>F-01. DUR 데이터 적재 상태 (병용금기/주의/효능군중복)</h3>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>현 상태</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dev_seed.sql</code> DUR 행수</td>
+<td><strong>2건</strong> (효능군중복 1 + 병용주의 1)</td>
+<td>시연용 시드 — <code>INSERT INTO dur_interaction_cache</code></td>
+</tr>
+<tr>
+<td><code>Scripts/sample_pdma_dur.csv</code></td>
+<td><strong>2건</strong> (병용금기)</td>
+<td><code>import_pdma.py</code> 로 import 시 추가</td>
+</tr>
+<tr>
+<td><strong>최대 합산</strong></td>
+<td><strong>4건</strong></td>
+<td>두 소스 모두 로드 시</td>
+</tr>
+<tr>
+<td><strong>식약처 정식 CSV</strong></td>
+<td>❌ <strong>미적재</strong></td>
+<td>별도 키 발급·다운로드 필요 (<code>OpenAPI 식약처 DUR.정보</code>)</td>
+</tr>
+<tr>
+<td>적재 도구</td>
+<td><code>MainServer/Scripts/import_pdma.py</code></td>
+<td>CSV bulk import 가능 — 키 입력 없이 동작</td>
+</tr>
+</tbody>
+</table>
+<p><strong>시연 의미</strong>: 시드 두 쌍의 약 조합(아세트아미노펜+아세트아미노펜=효능군중복, 이부프로펜+아스피린=병용주의)을 함께 등록하면 <code>dur_check.result=risk_found</code>+상세 텍스트가 응답에 포함되어 <strong>DUR 흐름의 정상 동작</strong>을 시각적으로 보여줄 수 있음. 다만 <strong>전체 식약처 DUR 데이터셋의 커버리지는 4건 한정</strong>이므로, 임의 약 조합에서 위험을 자동 검출하는 수준은 아님.</p>
+<p><strong>향후</strong>: 식약처 OpenAPI 키 발급(무료, 1일) 후 <code>import_pdma.py</code> 로 수만 건 일괄 적재 → 운영 모드. 본 시연 범위에는 미포함.</p>
+<h3>F-02. 다중 알약 카드별 등록 흐름</h3>
+<p><strong>문제 (사용자 지적)</strong>: "여러 알약을 같이 찍어도 한 알약밖에 대응이 안 되는 것 같다."</p>
+<p><strong>조치 (이번 세션)</strong>:
+- <code>Client/Frontend/Pages/IdentifyResultPage.qml</code> — 각 후보 카드에 [💊 이 약 기록·등록] 버튼 추가
+- 후보 ≥ 2 일 때 안내 배너 표시: "여러 약이 검출됐어요. 각 후보의 […] 버튼으로 하나씩 기록할 수 있어요."
+- <code>record_dialog</code> 에 <code>preset_item_code</code> / <code>preset_drug_name</code> 속성 추가 → 카드 클릭 시 그 약으로 다이얼로그 자동 시작
+- 다이얼로그 닫고 다른 카드 다시 클릭 → 다른 약 기록 가능 (반복 가능)</p>
+<p><strong>상태</strong>: ✅ UI 작업 완료. 메인서버 측은 단일 <code>/v1/pill/identify</code> 응답이 이미 <code>candidates[]</code> 배열을 N 개 반환하므로 백엔드 변경 불필요.</p>
+<h3>F-03. 약 이름 텍스트로 등록 (코드 모를 때)</h3>
+<p><strong>문제 (사용자 지적)</strong>: "사용자가 이름을 알 경우 텍스트를 수정해 등록할 수도 있잖아?"</p>
+<p><strong>조치 (이번 세션)</strong>:
+- <code>MainServer/Routers/Pill.cpp</code> — <code>POST /v1/pill/onboarding/normalize</code> 의 Production 가드 제거 → TestMode·Production 동일 동작 (단순 <code>drug_name LIKE</code>)
+- <code>Client/MainServerClient/PillApiClient.{h,cpp}</code> — <code>search_drug_name(text, cb)</code> 추가
+- <code>Client/Backend/Controllers/PillController.{h,cpp}</code> — <code>Q_INVOKABLE search_drug_name(query)</code> + <code>drug_search_completed(QVariantList)</code> 시그널
+- <code>Client/Frontend/Pages/PillPoolPage.qml</code> — [⌨ 직접 입력] 다이얼로그를 두 모드로 확장:
+  - 🔍 이름으로 검색 — 입력 후 검색 → 후보 카드 리스트 → 클릭 선택 → 등록
+  - ⌨ 코드 직접 입력 — 기존 동작 유지 (코드를 아는 경우)</p>
+<p><strong>검증 (서버 단)</strong>:</p>
+<pre><code>POST /v1/pill/onboarding/normalize
+{&quot;utterance_text&quot;:&quot;타이레놀&quot;,&quot;round&quot;:1}
+→ state: NEED_DISAMBIGUATION, candidates: 4건 (타이레놀정500mg 변형)
+</code></pre>
+<p><strong>상태</strong>: ✅ 클·서버 모두 작업 완료. 빌드 + GUI 검증 진행.</p>
+<hr />
 <h2>9. 결론</h2>
 <p><strong>Production 모드 자동 검증 21건 중 20건 통과 + 1건 부분 통과 (95.2%)</strong>. 클라이언트 GUI 8건 휴먼 검증은 사용자가 위 절차서 따라 실행 가능.</p>
+<p><strong>+ 사용자 후속 피드백 3건 반영 완료</strong> (DUR 데이터 상태 명시 / 다중 알약 카드별 등록 / 약 이름 텍스트 검색 등록).</p>
 <p>기획서 원 목적 (TestMode 가 아닌 실제 추론) 으로 전 시스템 동작 확인됨:
 - ✅ 메인서버 ↔ 보관 PC ↔ Vision PC 사진 흐름 (intent → PUT → commit → identify)
 - ✅ Vision PC 실 YOLO 검출 + OCR + 색·모양·크기 분석
