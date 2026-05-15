@@ -193,10 +193,26 @@ cd C:\Users\LMS\Desktop\Project\MediBridge\Client\build\Desktop_Qt_6_11_0_MinGW_
 
 | # | 이슈 | 심각도 | 상태 |
 |---|---|---|---|
-| 1 | Report Builder SQL bind 버그 (case 1-4 만) | 🔴 High | ✅ **본 검증 중 수정 완료** (commit pending) |
-| 2 | identify 후 식약처 캐시 매칭 점수 0.0 (drug_name 빈 값) | 🟡 Mid | ⏸ 별도 튜닝 필요 — Vision PC `match_keys` 는 정확 |
+| 1 | Report Builder SQL bind 버그 (case 1-4 만) | 🔴 High | ✅ **본 검증 중 수정 완료** |
+| 2 | identify 후 식약처 캐시 매칭 점수 0.0 (drug_name 빈 값) | 🟡 Mid | ✅ **UX 보강 — match_keys 강조 + "내 약 풀에서 선택" 버튼** (사용자 요청 반영) |
 | 3 | `/metrics` cpu/mem/disk 0.0 (구현 미완) | 🟢 Low | ⏸ 모니터링 외부 도구 사용 시 무관 |
 | 4 | 폰 PWA 미시연 (사용자 요청) | — | 별도 시연 시 추가 |
+| 5 | LLM PC degraded(rag_not_loaded) | 🟡 Mid | ✅ **sentence-transformers + KURE-v1 설치 → status:ok** |
+| 6 | 약 등록 수단 — 음성·직접입력 2개만, 촬영 누락 | 🟡 Mid | ✅ **PillPoolPage 에 📷 촬영 등록 버튼 추가** (3수단 완비) |
+| 7 | HomePage 와 CameraPage 의 identify_succeeded 중복 push 가능성 | 🟢 Low | ✅ **currentItem 가드 추가** |
+| 8 | 창 작게 조절 시 콘텐츠 잘림 위험 | 🟢 Low | ✅ **minimumWidth=800 / minimumHeight=600 명시** |
+
+---
+
+## 4-A. 사용자 후속 점검 사항 (5건 — 모두 반영 완료)
+
+| # | 사용자 질문 | 답 / 조치 |
+|---|---|---|
+| 1 | 음성·촬영·텍스트 3수단 모두 유용해야 | ✅ PillPoolPage 에 🎙음성 / 📷촬영 / ⌨직접입력 3개 버튼 분리. 촬영 등록은 폰 USB 연결 시만 활성, 미연결 시 안내 토스트 |
+| 2 | 화면 전환이 기획서·일반 UX 만족 | ✅ Login→Home `replace` / Home→타페이지 `push` / IdentifyResult "처음으로"→`replace("HomePage")` / CameraPage→IdentifyResult `replace` 일관성 확보. HomePage 의 onIdentify_succeeded 가드 추가 (CameraPage 와 중복 push 방지) |
+| 3 | 창 크기 잘림 없어야 | ✅ Main.qml `minimumWidth=800, minimumHeight=600` 명시. 기본 1024×720. 800 이하로 줄여도 ListView · ScrollView 가 내부 스크롤 |
+| 4 | DUR API Key 받은 적 없는데 동작? 공용? | ✅ **DUR 은 외부 키 X — CSV 일괄 적재 정책**. `import_pdma.py dur <csv>` 로 식약처 CSV 적재 후 운용. 운용 중 외부 호출 없음 (`DurQueryEngine.cpp` 가 `execSqlSync` 만 사용). 시연용 시드 4건 (병용금기 2/병용주의 1/효능군중복 1) 적재됨. e약은요 (`MEDIBRIDGE_PDMA_KEY`) 만 별도 키 필요하며, 미설정 시 graceful skip |
+| 5 | TC-10 식별 결과 화면에서 사용자가 약 풀에서 직접 선택 가능해야 | ✅ **IdentifyResultPage 후보 카드 UX 개편**: drug_name 빈 후보는 노란 강조 카드로 표시 (각인=820 / 검정 / 타원형 / 22.65mm 큰 글자) + **"💊 내 약 풀에서 선택" 액션 버튼** — 클릭 시 record_dialog 가 자동으로 "내 약 풀" RadioButton 으로 시작 |
 
 ---
 

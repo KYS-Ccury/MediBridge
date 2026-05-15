@@ -692,13 +692,13 @@ cd C:\Users\LMS\Desktop\Project\MediBridge\Client\build\Desktop_Qt_6_11_0_MinGW_
 <td>1</td>
 <td>Report Builder SQL bind 버그 (case 1-4 만)</td>
 <td>🔴 High</td>
-<td>✅ <strong>본 검증 중 수정 완료</strong> (commit pending)</td>
+<td>✅ <strong>본 검증 중 수정 완료</strong></td>
 </tr>
 <tr>
 <td>2</td>
 <td>identify 후 식약처 캐시 매칭 점수 0.0 (drug_name 빈 값)</td>
 <td>🟡 Mid</td>
-<td>⏸ 별도 튜닝 필요 — Vision PC <code>match_keys</code> 는 정확</td>
+<td>✅ <strong>UX 보강 — match_keys 강조 + "내 약 풀에서 선택" 버튼</strong> (사용자 요청 반영)</td>
 </tr>
 <tr>
 <td>3</td>
@@ -711,6 +711,68 @@ cd C:\Users\LMS\Desktop\Project\MediBridge\Client\build\Desktop_Qt_6_11_0_MinGW_
 <td>폰 PWA 미시연 (사용자 요청)</td>
 <td>—</td>
 <td>별도 시연 시 추가</td>
+</tr>
+<tr>
+<td>5</td>
+<td>LLM PC degraded(rag_not_loaded)</td>
+<td>🟡 Mid</td>
+<td>✅ <strong>sentence-transformers + KURE-v1 설치 → status:ok</strong></td>
+</tr>
+<tr>
+<td>6</td>
+<td>약 등록 수단 — 음성·직접입력 2개만, 촬영 누락</td>
+<td>🟡 Mid</td>
+<td>✅ <strong>PillPoolPage 에 📷 촬영 등록 버튼 추가</strong> (3수단 완비)</td>
+</tr>
+<tr>
+<td>7</td>
+<td>HomePage 와 CameraPage 의 identify_succeeded 중복 push 가능성</td>
+<td>🟢 Low</td>
+<td>✅ <strong>currentItem 가드 추가</strong></td>
+</tr>
+<tr>
+<td>8</td>
+<td>창 작게 조절 시 콘텐츠 잘림 위험</td>
+<td>🟢 Low</td>
+<td>✅ <strong>minimumWidth=800 / minimumHeight=600 명시</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4-A. 사용자 후속 점검 사항 (5건 — 모두 반영 완료)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>사용자 질문</th>
+<th>답 / 조치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>음성·촬영·텍스트 3수단 모두 유용해야</td>
+<td>✅ PillPoolPage 에 🎙음성 / 📷촬영 / ⌨직접입력 3개 버튼 분리. 촬영 등록은 폰 USB 연결 시만 활성, 미연결 시 안내 토스트</td>
+</tr>
+<tr>
+<td>2</td>
+<td>화면 전환이 기획서·일반 UX 만족</td>
+<td>✅ Login→Home <code>replace</code> / Home→타페이지 <code>push</code> / IdentifyResult "처음으로"→<code>replace("HomePage")</code> / CameraPage→IdentifyResult <code>replace</code> 일관성 확보. HomePage 의 onIdentify_succeeded 가드 추가 (CameraPage 와 중복 push 방지)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>창 크기 잘림 없어야</td>
+<td>✅ Main.qml <code>minimumWidth=800, minimumHeight=600</code> 명시. 기본 1024×720. 800 이하로 줄여도 ListView · ScrollView 가 내부 스크롤</td>
+</tr>
+<tr>
+<td>4</td>
+<td>DUR API Key 받은 적 없는데 동작? 공용?</td>
+<td>✅ <strong>DUR 은 외부 키 X — CSV 일괄 적재 정책</strong>. <code>import_pdma.py dur &lt;csv&gt;</code> 로 식약처 CSV 적재 후 운용. 운용 중 외부 호출 없음 (<code>DurQueryEngine.cpp</code> 가 <code>execSqlSync</code> 만 사용). 시연용 시드 4건 (병용금기 2/병용주의 1/효능군중복 1) 적재됨. e약은요 (<code>MEDIBRIDGE_PDMA_KEY</code>) 만 별도 키 필요하며, 미설정 시 graceful skip</td>
+</tr>
+<tr>
+<td>5</td>
+<td>TC-10 식별 결과 화면에서 사용자가 약 풀에서 직접 선택 가능해야</td>
+<td>✅ <strong>IdentifyResultPage 후보 카드 UX 개편</strong>: drug_name 빈 후보는 노란 강조 카드로 표시 (각인=820 / 검정 / 타원형 / 22.65mm 큰 글자) + <strong>"💊 내 약 풀에서 선택" 액션 버튼</strong> — 클릭 시 record_dialog 가 자동으로 "내 약 풀" RadioButton 으로 시작</td>
 </tr>
 </tbody>
 </table>

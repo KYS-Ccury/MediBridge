@@ -161,21 +161,50 @@ Page {
             color: "#5B6478"
         }
 
+        // 등록 수단 3가지 (요구사항 FR-C5-01 + 확장: 단일 촬영 등록)
+        // ① 음성 인식 등록 (폰 STT)
+        // ② 카메라 촬영 → 식별 → 풀 등록
+        // ③ 코드 직접 입력
         RowLayout {
             Layout.fillWidth: true
-            spacing: 16
+            spacing: 12
 
             AppButton {
-                text: qsTr("음성으로 등록")
+                text: qsTr("🎙 음성")
                 Layout.fillWidth: true
+                ToolTip.text: qsTr("폰 PWA 의 마이크로 약 이름 발화 → 자동 등록")
+                ToolTip.visible: hovered
                 onClicked: stack.push("VoiceInputPage.qml")
             }
 
             AppButton {
-                text: qsTr("직접 입력")
+                text: qsTr("📷 촬영")
                 Layout.fillWidth: true
+                ToolTip.text: qsTr("폰 카메라로 약 촬영 → 식별 결과에서 풀 등록")
+                ToolTip.visible: hovered
+                enabled: phone_link_controller.is_connected
+                onClicked: {
+                    if (phone_link_controller.is_connected) {
+                        stack.push("CameraPage.qml")
+                    } else {
+                        app_controller.show_toast(qsTr("휴대폰을 먼저 USB로 연결해 주세요."))
+                    }
+                }
+            }
+
+            AppButton {
+                text: qsTr("⌨ 직접 입력")
+                Layout.fillWidth: true
+                ToolTip.text: qsTr("식약처 품목기준코드로 직접 등록")
+                ToolTip.visible: hovered
                 onClicked: manual_add_dialog.open()
             }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 12
+            Layout.topMargin: 4
 
             AppButton {
                 text: qsTr("전체 리셋")

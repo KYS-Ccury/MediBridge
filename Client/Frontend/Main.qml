@@ -20,6 +20,9 @@ ApplicationWindow {
     visible: true
     width: 1024
     height: 720
+    // 최소 크기 — 이 이하로 줄여도 내부 콘텐츠가 잘리지 않도록 페이지마다 ScrollView 사용
+    minimumWidth: 800
+    minimumHeight: 600
     title: qsTr("메디브릿지")
 
     // Material 테마 (노인층 친화 — 큰 글자, 명확한 색상)

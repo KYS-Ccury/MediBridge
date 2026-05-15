@@ -13,8 +13,18 @@ Page {
 
     Connections {
         target: pill_controller
-        function onIdentify_succeeded() { stack.push("IdentifyResultPage.qml") }
-        function onIdentify_failed(error_code) { app_controller.show_toast(qsTr("식별 실패: ") + error_code) }
+        // ⚠ 중복 push 방지: CameraPage 가 이미 처리 (replace) 하므로
+        //   HomePage 가 현재 보이는 페이지일 때만 push. 폰 PWA 가 보낸 사진
+        //   (PhoneServer 자동 처리 흐름) 케이스에서만 동작.
+        function onIdentify_succeeded() {
+            if (stack.currentItem && stack.currentItem === home_page) {
+                stack.push("IdentifyResultPage.qml")
+            }
+        }
+        function onIdentify_failed(error_code) {
+            // 어느 페이지에 있든 토스트는 표시
+            app_controller.show_toast(qsTr("식별 실패: ") + error_code)
+        }
     }
 
     // 최상위 컨테이너를 화면 정중앙에 고정

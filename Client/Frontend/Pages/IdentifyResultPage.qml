@@ -87,11 +87,15 @@ Page {
                 spacing: 8
 
                 delegate: Rectangle {
+                    // drug_name 미확정(빈 값) → 노란 배경 강조 (사용자 약 풀에서 선택 안내)
+                    property bool name_unknown: !model.drug_name || model.drug_name.length === 0
                     width: candidates_list.width
-                    height: 92
-                    color: model.in_user_pool ? "#E8F5E9" : "white"
-                    border.color: "#D5DCE4"
-                    border.width: 1
+                    height: name_unknown ? 130 : 92
+                    color: name_unknown ? "#FFF8E1"
+                                        : (model.in_user_pool ? "#E8F5E9" : "white")
+                    border.color: name_unknown ? "#FFC107"
+                                               : "#D5DCE4"
+                    border.width: name_unknown ? 2 : 1
                     radius: 8
 
                     RowLayout {
@@ -105,13 +109,18 @@ Page {
 
                             RowLayout {
                                 Label {
-                                    text: model.drug_name
-                                    font.pixelSize: 16
+                                    // 식별 미확정 시 안내 텍스트
+                                    text: name_unknown
+                                          ? qsTr("🔍 식별 미확정 — 아래 특징으로 약 풀에서 선택해주세요")
+                                          : model.drug_name
+                                    font.pixelSize: name_unknown ? 13 : 16
                                     font.bold: true
-                                    color: "#1A2238"
+                                    color: name_unknown ? "#E65100" : "#1A2238"
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
                                 }
                                 Rectangle {
-                                    visible: model.in_user_pool
+                                    visible: !name_unknown && model.in_user_pool
                                     color: "#2E7D32"
                                     radius: 4
                                     implicitWidth: in_pool_label.implicitWidth + 12
@@ -130,18 +139,37 @@ Page {
                                 text: qsTr("코드: ") + model.item_code
                                 font.pixelSize: 12
                                 color: "#5B6478"
+                                visible: !name_unknown
                             }
+                            // 매칭 키 — 식별 미확정 시 큰 글자로 강조
                             Label {
-                                text: qsTr("매칭: ") + (model.match_keys || qsTr("-"))
-                                font.pixelSize: 12
-                                color: "#5B6478"
+                                text: name_unknown
+                                      ? (model.match_keys || qsTr("-"))
+                                      : (qsTr("매칭: ") + (model.match_keys || qsTr("-")))
+                                font.pixelSize: name_unknown ? 14 : 12
+                                font.bold: name_unknown
+                                color: name_unknown ? "#1A2238" : "#5B6478"
                                 visible: model.match_keys && model.match_keys.length > 0
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            // 식별 미확정 시 약 풀 선택 안내 버튼
+                            AppButton {
+                                visible: name_unknown
+                                text: qsTr("💊 내 약 풀에서 선택")
+                                Layout.preferredHeight: 30
+                                Layout.preferredWidth: 200
+                                onClicked: {
+                                    record_dialog.preset_source = "pool"
+                                    record_dialog.open()
+                                }
                             }
                         }
 
                         ColumnLayout {
                             Layout.alignment: Qt.AlignVCenter
                             spacing: 2
+                            visible: !name_unknown
 
                             Label {
                                 text: Math.round(model.confidence * 100) + "%"
@@ -244,6 +272,9 @@ Page {
         property string sel_item_code: ""
         property string sel_drug_name: ""
         property bool   in_pool: false
+        // 다이얼로그 오픈 시 어느 소스부터 시작할지: "candidate" / "pool" / "manual"
+        // "💊 내 약 풀에서 선택" 버튼 클릭 시 "pool" 로 지정.
+        property string preset_source: "candidate"
 
         // 입력 코드 → 내 약 풀에 있는지 검사
         function check_in_pool(code) {
@@ -275,7 +306,15 @@ Page {
             } else {
                 set_selection("", "")
             }
-            source_candidate.checked = true
+            // preset_source 에 따라 시작 소스 결정 — 식별 미확정 시 "pool" 로 진입
+            if (preset_source === "pool") {
+                source_pool.checked = true
+            } else if (preset_source === "manual") {
+                source_manual.checked = true
+            } else {
+                source_candidate.checked = true
+            }
+            preset_source = "candidate"   // 다음 호출 위해 리셋
             manual_code_input.text = ""
             qty_input.value = 1
             memo_input.text = ""
