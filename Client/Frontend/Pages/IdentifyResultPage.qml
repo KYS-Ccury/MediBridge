@@ -218,7 +218,11 @@ Page {
                     text: qsTr("처음으로")
                     variant: "secondary"
                     Layout.fillWidth: true
-                    onClicked: stack.pop()
+                    // 식별 결과 직전 스택은 CameraPage 일 수 있음.
+                    // 단순 pop() 시 CameraPage 로 돌아가는 UX 버그가 있어 HomePage 까지 모두 정리.
+                    //   stack.pop(null) — HomePage 가 첫 페이지(initialItem 직후 replace) 인 경우
+                    //   일관성을 위해 명시적으로 HomePage 로 replace.
+                    onClicked: stack.replace("HomePage.qml")
                 }
             }
         }
