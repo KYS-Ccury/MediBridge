@@ -493,6 +493,26 @@ curl -v http://10.10.10.97:8001/health
 > - `tts\enabled` — 음성 안내 ON/OFF
 > - `auth\access_token` · `user_id` · `email` · `user_name` — 자동 로그인용
 
+### InferenceServer (LLM PC `10.10.10.128:8002` + Vision PC `10.10.10.120:8003` 공유)
+
+| 이름 | 기본값 | 비고 |
+|---|---|---|
+| `MEDIBRIDGE_INFERENCE_PORT` | `8002` | LLM PC. Vision PC 는 `8003` 으로 export |
+| `MEDIBRIDGE_LLM_BACKEND` | `openai` | `openai` (gpt-4.1-nano 기본) / `ollama` (fallback) |
+| `OPENAI_API_KEY` | (없음) | 시크릿 — 플랫폼 발급. `MEDIBRIDGE_LLM_BACKEND=openai` 일 때 필수 |
+| `OPENAI_MODEL` | `gpt-4.1-nano` | 모델 버전 고정 권장 (예: `gpt-4.1-nano-2025-XX-XX`) |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | 자체 게이트웨이 사용 시 변경 |
+| `OLLAMA_HOST` | `http://localhost:11434` | 로컬 Ollama 서버 |
+| `OLLAMA_MODEL` | `gemma4:e4b` | fallback 모델 (24GB GPU sweet spot) |
+| `LLM_TEMPERATURE` | `0.0` | 결정론 (환각 최소) |
+| `LLM_TIMEOUT_MS` | `8000` | LLM HTTP 호출 타임아웃 |
+| `EMBEDDING_MODEL` | `nlpai-lab/KURE-v1` | 한국어 SOTA (568M, ~2.5GB VRAM) |
+| `EMBEDDING_DEVICE` | `cuda` | GPU 없으면 `cpu` |
+| `CHROMA_PERSIST_DIR` | `./chroma_db` | 벡터 DB 위치 (gitignore) |
+| `MEDIBRIDGE_VISION_ENABLED` | `true` | **LLM PC 에선 `false`** 로 export |
+| `MEDIBRIDGE_LLM_ENABLED` | `true` | **Vision PC 에선 `false`** 로 export |
+| `MEDIBRIDGE_RAG_PRELOAD` | `false` | 시작 시 RAG 즉시 로딩 (기본은 lazy) |
+
 ### 설정 우선순위
 
 ```

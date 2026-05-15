@@ -127,3 +127,13 @@ reports/*.pdf
 
 # Claude Code 환경 설정 (사용자 PC 로컬)
 .claude/
+
+# ─────────────────────────────────────────────
+# LLM PC — Chroma 벡터 DB / 임베딩 모델 캐시 / .env
+# ─────────────────────────────────────────────
+InferenceServer/chroma_db/
+InferenceServer/.env
+**/chroma_db/
+# HuggingFace 모델 캐시 (KURE-v1, bge-m3 등 자동 다운로드)
+.cache/huggingface/
+hf_cache/

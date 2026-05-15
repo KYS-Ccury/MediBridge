@@ -3,9 +3,9 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | 설치 매뉴얼 인덱스 (전체 환경 한눈에) |
-| **버전** | v1.2 |
+| **버전** | v1.3 |
 | **개정일** | 2026-05-15 |
-| **이전 버전** | v1.1 (2026-05-13) / v1.0 (2026-05-06) |
+| **이전 버전** | v1.2 (2026-05-15) / v1.1 (2026-05-13) / v1.0 (2026-05-06) |
 | **작성자** | 팀 (3인) |
 
 > 본 폴더(`Docs/Install/`)는 메디브릿지 프로젝트의 **각 PC/디바이스별 설치 절차를 매뉴얼화**하여 관리한다. 환경 재구축, 신규 팀원 온보딩, 트러블슈팅 시 1차 참고 문서.
@@ -77,3 +77,4 @@
 | v1.0 | 2026-05-06 | 팀 (3인) | 초안 작성. 클라 PC + S24 폰 매뉴얼 본문 작성 완료, 서버군 3종 스켈레톤 작성 |
 | **v1.1** | **2026-05-13** | 팀 (3인) | **데이터 보관 PC 추가** — Drogon 미니 서버 port 8004, [DataStorageInstall.md](DataStorageInstall.md) 신규. 메인 서버 매뉴얼 작성 완료(✅). 통신 구간도에 사진 흐름 ⑤+⑥ (메인 우회 PUT/GET) 반영. LLM/Vision 추론 서버 2대 분리. 시스템 시작 명령은 [system_prompt.md](../system_prompt.md) 정본으로 분리. |
 | **v1.2** | **2026-05-15** | 팀 (3인) | [ClientPcInstall.md v1.3](ClientPcInstall.md) 갱신 반영 — `MEDIBRIDGE_PHONE_PORT` 환경변수 (폰 측 8000 점유 시 18000 등으로 대체), TTS 환영 멘트 + 음성 안내 Switch + 자동 로그인 동작 체크리스트, QSettings 영속 경로 (`HKCU\Software\MediBridge\MediBridgeClient`) 추가. AdbReverseManager 자동 동작 명시. 관련 커밋: `5b3ccae` · `262f7ff`. |
+| **v1.3** | **2026-05-15** | 팀 (3인) | ① **LLM ↔ Vision PC IP swap** — LLM = `10.10.10.128:8002` / Vision = `10.10.10.120:8003` (스왑됨). ② [InferenceServerInstall.md v0.2](InferenceServerInstall.md) — LLM PC §3.A 실 셋업 (Python venv / OpenAI gpt-4.1-nano 기본 / Ollama gemma4:e4b fallback / KURE-v1 임베딩 / Chroma RAG / BuildRagIndex.py / systemd 단위). Vision PC 측은 인효 담당 (스켈레톤 유지). ③ MainServer 환경변수 `MEDIBRIDGE_PDMA_CACHE_TTL_DAYS=30` (e약은요 lazy 캐시 동기 refresh). 관련 설계: [LlmInferenceServer_Design.md](../LlmInferenceServer_Design.md) · [CropPersistence_Design.md](../CropPersistence_Design.md). |

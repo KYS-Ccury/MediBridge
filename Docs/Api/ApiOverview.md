@@ -3,11 +3,18 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | API 명세서 인덱스 + 공통 규칙 |
-| **버전** | v0.4 |
-| **개정일** | 2026-05-13 |
-| **이전 버전** | v0.3 (2026-05-07) / v0.2 (2026-05-07) / v0.1 (2026-05-06) → `Docs/Old/Api/ApiOverview_v0.1_2026-05-07.md` |
+| **버전** | v0.5 |
+| **개정일** | 2026-05-15 |
+| **이전 버전** | v0.4 (2026-05-13) / v0.3 (2026-05-07) / v0.2 (2026-05-07) / v0.1 (2026-05-06) |
 
 > 본 폴더(`Docs/Api/`)는 메디브릿지 클라이언트 ↔ 메인 서버 ↔ 추론 서버 간의 **REST API 변경 불가 계약**을 정의한다.
+
+> ⭐ **v0.5 변경 핵심** (2026-05-15 LLM PC 본 구현 + IP swap + TTL 회귀):
+> - **LLM ↔ Vision PC IP swap** — LLM = `10.10.10.128:8002` / Vision = `10.10.10.120:8003`
+> - **InferenceServer LLM 라우터 정식 가동** — `POST /intent/classify`, `POST /onboarding/normalize`, `POST /onboarding/disambiguate`, `POST /summary/non-medical` 501 → 200 (OpenAI gpt-4.1-nano 기본 / Ollama gemma4:e4b fallback / KURE-v1 임베딩 / Chroma RAG)
+> - **e약은요 TTL 30일 동기 refresh 회귀** — `DrugOverviewCache::get_or_fetch()` 가 `cached_at` 30일 초과 시 자동 외부 API 호출 + UPSERT (환경변수 `MEDIBRIDGE_PDMA_CACHE_TTL_DAYS=30`, 0=무한)
+> - **SpeechApi v0.2** — 클라 PhoneServer → UtteranceForwarder 경유 + TestMode dev 로깅
+> - **신규 디버그 엔드포인트** — `GET /llm/health` (InferenceServer) — LlmProvider · RAG 상태 verbose
 >
 > ⭐ **v0.4 변경 핵심** (사진 흐름 ⑤+⑥ 구현 완료 — 호환 변경):
 > - **MediaApi v0.2** — `POST /v1/media/intent`, `POST /v1/media/commit`, `POST /v1/media/get_token` **신규 3개**. 기존 `POST /v1/media/image` 는 레거시/TestMode fallback 으로 유지

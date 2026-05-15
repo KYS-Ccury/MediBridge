@@ -11,6 +11,36 @@
 
 ## [Unreleased]
 
+### Fixed · Verified (2026-05-15 — LLM PC 본 구현 점검·보강·빌드 검증)
+
+이전 LLM PC 본 구현 후속 — 빠진 부분 점검 결과:
+
+**보강**:
+- `InferenceServer/Monitoring/HealthChecker.py` — LLM PC 모드에서 Vision 미로드 false-down 버그 수정.
+  `MEDIBRIDGE_VISION_ENABLED` / `MEDIBRIDGE_LLM_ENABLED` 환경변수 분기로 활성 모듈만 점검.
+  LLM Provider 도달성 + RAG 컬렉션 상태도 함께 검사.
+- `InferenceServer/Routers/Monitoring.py` — `GET /llm/health` 신규 (LlmProvider · RAG verbose).
+- `InferenceServer/Llm/__init__.py` — public API export 정리.
+- `.gitignore` — `InferenceServer/chroma_db/` · `.env` · HF cache 추가.
+
+**빌드 검증**:
+- MainServer 재빌드 OK
+- Client incremental build OK
+- InferenceServer Python 42개 파일 ast.parse syntax pass
+- WSL venv 실 import 테스트:
+  - `LlmProvider.make_provider()` → OpenAI Provider 인스턴스화 OK
+  - `IntentClassifier.instance()` / `OutputSanitizer.contains_banned()` / `InjectionFilter.detect()` 동작 확인
+  - `Routers.Intent / Onboarding / Summary / Monitoring` import OK
+  - FastAPI app 로드 OK
+  - 더미 키로 OpenAI Chat 호출 → 401 (실 키만 있으면 즉시 동작)
+
+**문서 갱신**:
+- `Docs/Api/ApiOverview.md` v0.4 → v0.5 (LLM PC 본 구현 + IP swap + TTL 회귀)
+- `Docs/Install/InstallIndex.md` v1.2 → v1.3
+- `Docs/system_prompt.md` §8 InferenceServer 환경변수 표 신규 (LLM Backend / OpenAI · Ollama · KURE-v1 · Chroma · 기능 flag 16종)
+
+---
+
 ### Added (2026-05-15 — LLM PC 본 구현 + TTL 30일 회귀 + Crop 영속화 설계)
 
 #### A. e약은요 캐시 TTL 30일 정책 회귀 (commit pending)
