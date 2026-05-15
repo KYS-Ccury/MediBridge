@@ -1,35 +1,207 @@
 """
-FinetuneOcr — PaddleOCR 알약 각인 fine-tuning 스크립트
+FinetuneOcr — PaddleOCR 인식(rec) 모델 알약 각인 fine-tuning
 
-사용:
-    python FinetuneOcr.py --data ../Datasets/pill_engravings/ --epochs 50
+PrepareEngravingDataset.py 가 만든 데이터셋(_ocr_rec_dataset)으로
+PP-OCRv4 영문 rec 모델을 fine-tune. 검출(det) 단계는 사용 안 함 —
+YOLO 가 이미 알약을 crop 하므로 rec 만 필요.
 
-PaddleOCR fine-tuning은 yaml 설정 + 별도 도구 사용 — 본 스크립트는 진입점만.
+흐름:
+  1. PaddleOCR repo clone (tools/train.py 필요)
+  2. 사전학습 rec 모델 다운로드 (en_PP-OCRv4_rec)
+  3. 데이터셋 경로/char_dict 로 rec config YAML 생성
+  4. tools/train.py 실행 (GPU)
+  5. tools/export_model.py 로 추론용 inference model 추출
+  6. 결과 → OcrEngine 가 MEDIBRIDGE_OCR_REC_DIR 로 로드
+
+사용 (Vision PC, venv):
+  python FinetuneOcr.py --data /.../DATA/_ocr_rec_dataset \
+     --workdir /.../DATA/_ocr_train --epochs 60 [--smoke]
 """
+from __future__ import annotations
 import argparse
-from loguru import logger
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+PADDLEOCR_REPO = "https://github.com/PaddlePaddle/PaddleOCR.git"
+PRETRAIN_URL = ("https://paddleocr.bj.bcebos.com/PP-OCRv4/english/"
+                "en_PP-OCRv4_rec_train.tar")
+
+REC_CONFIG_TMPL = """
+Global:
+  use_gpu: true
+  epoch_num: {epochs}
+  log_smooth_window: 20
+  print_batch_step: 20
+  save_model_dir: {save_dir}
+  save_epoch_step: 5
+  eval_batch_step: [0, 500]
+  cal_metric_during_train: true
+  pretrained_model: {pretrained}
+  checkpoints:
+  save_inference_dir: {infer_dir}
+  use_visualdl: false
+  character_dict_path: {char_dict}
+  max_text_length: 25
+  use_space_char: true
+  save_res_path: {save_dir}/predicts.txt
+  distributed: false
+
+Optimizer:
+  name: Adam
+  beta1: 0.9
+  beta2: 0.999
+  lr:
+    name: Cosine
+    learning_rate: 0.0005
+    warmup_epoch: 2
+  regularizer:
+    name: L2
+    factor: 3.0e-05
+
+Architecture:
+  model_type: rec
+  algorithm: SVTR_LCNet
+  Transform:
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.95
+  Head:
+    name: MultiHead
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [1, 3]
+            use_guide: true
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+Loss:
+  name: MultiLoss
+  loss_config_list:
+    - CTCLoss:
+    - NRTRLoss:
+
+PostProcess:
+  name: CTCLabelDecode
+
+Metric:
+  name: RecMetric
+  main_indicator: acc
+  ignore_space: false
+
+Train:
+  dataset:
+    name: SimpleDataSet
+    data_dir: {data_dir}
+    ext_op_transform_idx: 1
+    label_file_list:
+      - {train_list}
+    transforms:
+      - DecodeImage: {{img_mode: BGR, channel_first: false}}
+      - RecAug:
+      - MultiLabelEncode:
+          gtc_encode: NRTRLabelEncode
+      - RecResizeImg:
+          image_shape: [3, 48, 320]
+      - KeepKeys:
+          keep_keys: [image, label_ctc, label_gtc, length, valid_ratio]
+  loader:
+    shuffle: true
+    batch_size_per_card: 32
+    drop_last: true
+    num_workers: 2
+
+Eval:
+  dataset:
+    name: SimpleDataSet
+    data_dir: {data_dir}
+    label_file_list:
+      - {val_list}
+    transforms:
+      - DecodeImage: {{img_mode: BGR, channel_first: false}}
+      - MultiLabelEncode:
+          gtc_encode: NRTRLabelEncode
+      - RecResizeImg:
+          image_shape: [3, 48, 320]
+      - KeepKeys:
+          keep_keys: [image, label_ctc, label_gtc, length, valid_ratio]
+  loader:
+    shuffle: false
+    drop_last: false
+    batch_size_per_card: 32
+    num_workers: 2
+"""
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="PaddleOCR 알약 각인 fine-tuning")
-    parser.add_argument("--data", required=True, help="알약 각인 데이터셋 경로")
-    parser.add_argument("--config", default="configs/rec_korean_lite_train.yml")
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--pretrained", default="rec_korean_lite/best_accuracy.pdparams")
-    return parser.parse_args()
+def run(cmd, cwd=None, env=None):
+    print(f"[run] {' '.join(str(c) for c in cmd)}", flush=True)
+    subprocess.check_call([str(c) for c in cmd], cwd=cwd, env=env)
 
 
-def finetune(args: argparse.Namespace) -> None:
-    """fine-tuning 진입점"""
-    # TODO (영역 A 분담):
-    #   1. PaddleOCR 학습 도구 설치 (PaddleOCR 저장소 clone 후 tools/train.py 사용)
-    #   2. 알약 데이터셋을 PaddleOCR 형식으로 변환
-    #   3. config YAML 수정 (data_dir, label_file_list)
-    #   4. python tools/train.py -c <config> -o Global.pretrained_model=<base> 실행
-    #   5. 결과 가중치 → 추론 서버 SCP 배포
-    logger.info(f"[FinetuneOcr] TODO 구현 — args: {args}")
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", required=True, help="_ocr_rec_dataset 경로")
+    ap.add_argument("--workdir", required=True, help="학습 작업 디렉토리")
+    ap.add_argument("--epochs", type=int, default=60)
+    ap.add_argument("--smoke", action="store_true",
+                    help="2 epoch — 파이프라인 검증용")
+    args = ap.parse_args()
+
+    data = Path(args.data).resolve()
+    work = Path(args.workdir).resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    repo = work / "PaddleOCR"
+    save_dir = work / "rec_pill"
+    infer_dir = work / "rec_pill_infer"
+
+    if not (data / "train_list.txt").exists():
+        print(f"[err] {data}/train_list.txt 없음 — 데이터셋 먼저 준비")
+        return 1
+
+    if not repo.exists():
+        run(["git", "clone", "--depth", "1", PADDLEOCR_REPO, repo])
+
+    pre_tar = work / "en_PP-OCRv4_rec_train.tar"
+    pre_dir = work / "en_PP-OCRv4_rec_train"
+    if not pre_dir.exists():
+        if not pre_tar.exists():
+            run(["wget", "-q", "-O", pre_tar, PRETRAIN_URL])
+        run(["tar", "-xf", pre_tar, "-C", work])
+    pretrained = pre_dir / "best_accuracy"
+
+    epochs = 2 if args.smoke else args.epochs
+    cfg = REC_CONFIG_TMPL.format(
+        epochs=epochs, save_dir=save_dir, infer_dir=infer_dir,
+        pretrained=pretrained, char_dict=data / "char_dict.txt",
+        data_dir=data, train_list=data / "train_list.txt",
+        val_list=data / "val_list.txt")
+    cfg_path = work / "rec_pill.yml"
+    cfg_path.write_text(cfg, encoding="utf-8")
+    print(f"[cfg] {cfg_path}", flush=True)
+
+    env = dict(os.environ)
+    env.setdefault("CUDA_VISIBLE_DEVICES", "0")
+
+    run([sys.executable, "tools/train.py", "-c", cfg_path],
+        cwd=repo, env=env)
+    run([sys.executable, "tools/export_model.py", "-c", cfg_path,
+         "-o", f"Global.pretrained_model={save_dir}/best_accuracy",
+         f"Global.save_inference_dir={infer_dir}"],
+        cwd=repo, env=env)
+
+    print(f"\n[done] 추론 모델: {infer_dir}", flush=True)
+    print(f"[deploy] OcrEngine 에 MEDIBRIDGE_OCR_REC_DIR={infer_dir}")
+    return 0
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    finetune(args)
+    sys.exit(main())

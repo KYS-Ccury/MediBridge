@@ -44,17 +44,34 @@ class OcrEngine:
         self.is_loaded: bool = False
 
     def load_model(self) -> None:
-        """PaddleOCR 영문 모델 로딩. 첫 호출 시 가중치 자동 다운로드."""
+        """PaddleOCR rec 모델 로딩.
+
+        ⭐ 알약 각인 fine-tuned rec 모델 우선 사용:
+          MEDIBRIDGE_OCR_REC_DIR  — FinetuneOcr 가 추출한 inference 디렉토리
+          MEDIBRIDGE_OCR_REC_DICT — 학습에 쓴 char_dict.txt
+        둘 다 지정·존재하면 그 rec 모델로 로드(검출은 기본 모델 유지,
+        실사용은 recognize_array 가 det=False 로 rec 만 호출).
+        미지정 시 사전학습 영문 모델 fallback.
+        """
+        import os
+        rec_dir = os.environ.get("MEDIBRIDGE_OCR_REC_DIR", "").strip()
+        rec_dict = os.environ.get("MEDIBRIDGE_OCR_REC_DICT", "").strip()
         try:
             from paddleocr import PaddleOCR
-            # lang='en' — 알약 각인은 거의 영문·숫자
+            kw = dict(use_angle_cls=True, lang="en")
+            if rec_dir and os.path.isdir(rec_dir):
+                kw["rec_model_dir"] = rec_dir
+                if rec_dict and os.path.isfile(rec_dict):
+                    kw["rec_char_dict_path"] = rec_dict
+                logger.info(f"[OcrEngine] fine-tuned rec 사용 — {rec_dir}")
             try:
-                self.engine = PaddleOCR(use_angle_cls=True, lang="en",
-                                        show_log=False)
+                self.engine = PaddleOCR(show_log=False, **kw)
             except TypeError:
-                self.engine = PaddleOCR(use_angle_cls=True, lang="en")
+                self.engine = PaddleOCR(**kw)
             self.is_loaded = True
-            logger.info("[OcrEngine] PaddleOCR(en) 로드 완료")
+            logger.info("[OcrEngine] PaddleOCR rec 로드 완료"
+                        + (" (fine-tuned)" if "rec_model_dir" in kw
+                           else " (pretrained en)"))
         except Exception as e:
             logger.warning(f"[OcrEngine] 로드 실패 (graceful): {e}")
             self.is_loaded = False
