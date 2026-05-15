@@ -49,6 +49,25 @@ HSV_CATEGORIES = [
 ]
 
 
+def _white_balance(bgr: np.ndarray) -> np.ndarray:
+    """White-patch(percentile) 화이트밸런스.
+
+    실측: 차가운 조명 탓에 흰 알약이 H≈105/S≈60-78 (파란색)로 찍힘.
+    각 채널의 상위 백분위(밝은 = 흰색이어야 할) 값을 기준으로 채널을
+    정규화 → 전역 색 캐스트 제거. 흰 알약은 S 가 0 근처로 떨어져
+    '흰색'으로, 진짜 컬러 알약은 채도가 유지돼 구분된다.
+    """
+    try:
+        out = bgr.astype(np.float32)
+        for c in range(3):
+            ref = np.percentile(out[:, :, c], 97.0)
+            if ref > 1.0:
+                out[:, :, c] *= (255.0 / ref)
+        return np.clip(out, 0, 255).astype(np.uint8)
+    except Exception:
+        return bgr
+
+
 def _largest_contour(crop_bgr: np.ndarray) -> Optional[np.ndarray]:
     """알약 본체 contour — 중앙(=알약)이 속한 Otsu 쪽을 전경으로 선택.
 
@@ -101,7 +120,9 @@ class ColorClassifier:
         if crop_bgr is None or crop_bgr.size == 0:
             return ColorResult("기타", (0.0, 0.0, 0.0), 0.0)
 
-        hsv = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2HSV)
+        # 전역 색 캐스트 제거 후 HSV 분석
+        wb = _white_balance(crop_bgr)
+        hsv = cv2.cvtColor(wb, cv2.COLOR_BGR2HSV)
 
         cnt = _largest_contour(crop_bgr)
         if cnt is not None and len(cnt) >= 3:
