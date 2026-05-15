@@ -11,6 +11,45 @@
 
 ## [Unreleased]
 
+### Added · Verified (2026-05-15 — 보관 PC (10.10.10.122) 원격 연동 + sync 스크립트)
+
+**환경**:
+- `lms@lms-System-Product-Name` (Ubuntu)
+- 작업 경로: `~/바탕화면/MediBridge/DataStorageServer/`
+- Drogon 1.x 시스템 설치 (`libdrogon.so`), cmake 3.28, g++ 13.3, MariaDB active
+- 디스크 414GB 여유
+
+**현 상태 점검 결과**:
+- 보관 PC 이미 가동 중 (PID 152112, 8004 listen)
+- `MEDIBRIDGE_STORAGE_SECRET` 메인서버와 동일 (HMAC 토큰 검증 정상)
+- LAN 외부 도달성 양방향 확인:
+  - 본 PC → 10.10.10.122:8004/health → 200
+  - Vision PC → 10.10.10.122:8004/health → 200
+- 본 PC ↔ 보관 PC `DataStorageServer/` 코드 SHA256 완전 일치 (`3fb8894a...720fcdb5`)
+
+**SSH 키 등록 완료** (사용자 비번 1회).
+
+**`Scripts/sync-storage-pc.sh` 신규**:
+- Vision/LLM PC sync 와 동일 패턴 (rsync over SSH 단방향, git 미사용)
+- 옵션:
+  - 기본 동기화
+  - `--rebuild` cmake + make 자동
+  - `--restart` 가동 중 인스턴스 pkill + datastorage-up.sh 재가동
+- SHA256 동일성 검증
+
+**시스템 5-PC 최종 상태**:
+| PC | IP:Port | 가동 | LAN 외부 | sync 스크립트 |
+|---|---|---|---|---|
+| 메인서버 | 10.10.10.97:8001 | ✅ | ✅ | (본 PC 자체) |
+| 데이터 보관 | 10.10.10.122:8004 | 🟢 가동 중 | ✅ | `sync-storage-pc.sh` |
+| Vision 추론 | 10.10.10.120:8003 | 🟢 가동 중 | ✅ | `sync-vision-pc.sh` |
+| LLM 추론 | 10.10.10.128:8002 | 🟢 가동 중 | ⚠ ufw allow 8002 필요 | `sync-llm-pc.sh` |
+| 클라이언트 | (로컬) | ✅ | — | — |
+
+→ **5대 PC 전체 원격 동기화 가능 상태**. `ufw allow 8002` 한 줄만 LLM PC 측에서 끝나면 풀 시스템 시연 가능.
+
+---
+
 ### Added · Deployed (2026-05-15 — LLM PC 실 배포·가동·E2E 검증 + 3-mode Provider) ⭐
 
 InferenceServer 본 구조를 LLM PC (`llm-server@10.10.10.128`) 의
