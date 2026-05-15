@@ -1,19 +1,27 @@
 """
 OcrEngine — PaddleOCR 각인 인식 (싱글톤)
 
-⭐ 2026-05-15 — Vision PC 담당자 (인효) 의 `engines/ocr_engine.py` + `lib/ocr.py` 코드를 이식.
-   원본 핵심:
-     - PaddleOCR(use_angle_cls=True, lang='korean')
-     - 원본 + sharpening 2-variant 시도 후 가장 긴 결과 채택
-     - join_lines: 신뢰도 순 결합
+⭐ 2026-05-15 v2 — TrainingServer/check_img/lib/ocr.py (사용자 개선본) 이식.
+   기존 이식본 문제: lang='korean' + 약한 sharpen → 영문 각인을 'PXF'
+   처럼 오인식·미인식.
+
+   v2 핵심:
+     - 언어 모델 'korean' → **'en'** : 의약품 각인은 거의 영문·숫자.
+       한글 모델보다 라틴 문자/숫자에 정확·경량.
+     - 전처리 3종:
+         A) 업스케일 — 짧은 변 < 240px 이면 INTER_CUBIC 확대
+         B) CLAHE   — LAB L 채널 로컬 콘트라스트 (음각 그림자 강조)
+         C) Unsharp — 가우시안 블러 빼기 샤프닝 (글자 윤곽 선명)
+     - min_confidence 0.25 (각인은 일반 텍스트보다 conf 낮은 경향)
 """
-import io
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 from loguru import logger
+
+TARGET_MIN_SIDE = 240   # 업스케일 기준 (짧은 변 px)
 
 
 @dataclass
@@ -36,56 +44,86 @@ class OcrEngine:
         self.is_loaded: bool = False
 
     def load_model(self) -> None:
-        """모델 로딩 — PaddleOCR 한국어. 첫 호출 시 가중치 자동 다운로드 (~수십 MB)."""
+        """PaddleOCR 영문 모델 로딩. 첫 호출 시 가중치 자동 다운로드."""
         try:
             from paddleocr import PaddleOCR
-            self.engine = PaddleOCR(use_angle_cls=True, lang="korean", show_log=False)
+            # lang='en' — 알약 각인은 거의 영문·숫자
+            try:
+                self.engine = PaddleOCR(use_angle_cls=True, lang="en",
+                                        show_log=False)
+            except TypeError:
+                self.engine = PaddleOCR(use_angle_cls=True, lang="en")
             self.is_loaded = True
-            logger.info("[OcrEngine] PaddleOCR(korean) 로드 완료")
+            logger.info("[OcrEngine] PaddleOCR(en) 로드 완료")
         except Exception as e:
             logger.warning(f"[OcrEngine] 로드 실패 (graceful): {e}")
             self.is_loaded = False
 
-    def recognize(self, crop_image_bytes: bytes) -> Tuple[str, float]:
-        """
-        crop된 알약 이미지 (bytes) 에서 각인 텍스트 인식.
+    # ---------- 전처리 ----------
 
-        Returns:
-            (각인 텍스트, 평균 신뢰도) — 인식 실패 시 ("각인없음", 0.0)
-        """
+    @staticmethod
+    def _preprocess(crop_bgr: np.ndarray) -> np.ndarray:
+        """A) 업스케일 + B) LAB-L CLAHE + C) Unsharp."""
+        if crop_bgr is None or crop_bgr.size == 0:
+            return crop_bgr
+        out = crop_bgr.copy()
+
+        # A) 업스케일
+        h, w = out.shape[:2]
+        short = min(h, w)
+        if 0 < short < TARGET_MIN_SIDE:
+            scale = TARGET_MIN_SIDE / float(short)
+            out = cv2.resize(
+                out, (max(1, int(round(w * scale))),
+                      max(1, int(round(h * scale)))),
+                interpolation=cv2.INTER_CUBIC)
+
+        # B) CLAHE on LAB L
+        try:
+            lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB)
+            l_c, a_c, b_c = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            l_eq = clahe.apply(l_c)
+            out = cv2.cvtColor(cv2.merge([l_eq, a_c, b_c]),
+                               cv2.COLOR_LAB2BGR)
+        except Exception:
+            pass
+
+        # C) Unsharp mask
+        try:
+            g = cv2.GaussianBlur(out, (0, 0), sigmaX=1.5)
+            out = cv2.addWeighted(out, 1.5, g, -0.5, 0)
+        except Exception:
+            pass
+        return out
+
+    # ---------- 인식 ----------
+
+    def recognize(self, crop_image_bytes: bytes) -> Tuple[str, float]:
         img = self._decode(crop_image_bytes)
         if img is None:
             return ("각인없음", 0.0)
         return self.recognize_array(img)
 
     def recognize_array(self, crop_bgr: np.ndarray) -> Tuple[str, float]:
-        """numpy 배열 직접 입력 — YoloDetector 의 _crop_cache 와 직결."""
+        """numpy BGR crop → 각인 텍스트, 평균 신뢰도."""
         if not self.is_loaded or self.engine is None:
             return ("각인없음", 0.0)
         if crop_bgr is None or crop_bgr.size == 0:
             return ("각인없음", 0.0)
 
-        best_lines: List[OcrLine] = []
-        best_avg_conf = 0.0
-        for variant in self._variants(crop_bgr):
-            lines = self._ocr_one(variant)
-            if not lines:
-                continue
-            # 가장 긴 결과 우선 (담당자 휴리스틱 — 짧은 false positive 회피)
-            joined = " ".join(l.text for l in lines)
-            best_joined = " ".join(l.text for l in best_lines) if best_lines else ""
-            if len(joined) > len(best_joined):
-                best_lines = lines
-                avg = sum(l.confidence for l in lines) / max(len(lines), 1)
-                best_avg_conf = avg
-
-        if not best_lines:
+        pre = self._preprocess(crop_bgr)
+        lines = self._ocr_one(pre, min_confidence=0.25)
+        # 전처리본이 비면 원본도 한 번 시도 (보강 실패 대비)
+        if not lines:
+            lines = self._ocr_one(crop_bgr, min_confidence=0.25)
+        if not lines:
             return ("각인없음", 0.0)
 
-        # 신뢰도 순 결합 (담당자 join_lines 규칙)
-        sorted_lines = sorted(best_lines, key=lambda l: l.confidence, reverse=True)
+        avg = sum(l.confidence for l in lines) / max(len(lines), 1)
+        sorted_lines = sorted(lines, key=lambda l: l.confidence, reverse=True)
         text = " ".join(l.text for l in sorted_lines).strip()
-        return (text or "각인없음", round(best_avg_conf, 3))
+        return (text or "각인없음", round(avg, 3))
 
     # ---------- 내부 ----------
 
@@ -96,41 +134,13 @@ class OcrEngine:
         except Exception:
             return None
 
-    def _variants(self, img: np.ndarray):
-        """원본 + sharpening + CLAHE 대비강화.
-
-        ⭐ 2026-05-15 — 음각/양각 각인 가시화용 CLAHE variant 추가.
-           흰 알약에 같은 색으로 음각된 글자(KG 등)는 대비가 거의
-           없어 일반 OCR 이 실패 → CLAHE 로 국소 대비를 끌어올려
-           각인 윤곽을 드러낸다. (모델 재학습 아님, 전처리 보강)
-        """
-        yield img
+    def _ocr_one(self, img: np.ndarray,
+                 min_confidence: float = 0.25) -> List[OcrLine]:
         try:
-            kernel = np.array([[0, -0.5, 0], [-0.5, 3, -0.5], [0, -0.5, 0]])
-            yield cv2.filter2D(img, -1, kernel)
-        except Exception:
-            pass
-        try:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            enhanced = clahe.apply(gray)
-            yield cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
-        except Exception:
-            pass
-        try:
-            # CLAHE + sharpen 조합 (음각 윤곽 더 강조)
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-            enh = clahe.apply(gray)
-            k = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-            sharp = cv2.filter2D(enh, -1, k)
-            yield cv2.cvtColor(sharp, cv2.COLOR_GRAY2BGR)
-        except Exception:
-            pass
-
-    def _ocr_one(self, img: np.ndarray, min_confidence: float = 0.3) -> List[OcrLine]:
-        try:
-            result = self.engine.ocr(img, cls=True)
+            try:
+                result = self.engine.ocr(img, cls=True)
+            except TypeError:
+                result = self.engine.ocr(img)
         except Exception as e:
             logger.warning(f"[OcrEngine] PaddleOCR 호출 예외: {e}")
             return []
