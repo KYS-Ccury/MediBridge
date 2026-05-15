@@ -11,6 +11,52 @@
 
 ## [Unreleased]
 
+### Added (2026-05-15 — Vision PC 담당자 코드 이식 + /vision/detect_remote 구현)
+
+Vision PC (`10.10.10.120`) 담당자 (인효) 가 SSH `ai-trainer@10.10.10.120` 의
+`/media/ai-trainer/.../yesom/Desktop/MediBridge/check_img_ih/` 에서 YOLO·PaddleOCR·OpenCV
+로 모델 작성·추론 완성. 폴더 정리 + 네트워크 라우터 작성을 본 측에서 진행.
+
+**Vision PC 코드 이식** (담당자 원본 → InferenceServer/Vision 구조):
+- `Vision/YoloDetector.py` — `engines/yolo_engine.py::YoloDetector.detect_and_crop()` 이식
+  + crop_id 메모리 캐시 + LRU evict + GPU/CPU graceful fallback
+- `Vision/OcrEngine.py` — `engines/ocr_engine.py::OcrReader` + `lib/ocr.py::recognize_engraving`
+  이식 — PaddleOCR(korean) + 2-variant (원본 + sharpening) 휴리스틱
+- `Vision/ColorClassifier.py` — `lib/color.py` + `engines/cv_engine._get_vibrant_center`
+  이식 — HSV 13 카테고리 (흰색·검정·회색·빨간색·주황·노란색·연두·초록·파란색·보라·분홍·갈색·기타)
+  + 중앙 채도 상위 50% 휴리스틱 (회색 오판 방지)
+- `Vision/ShapeClassifier.py` — `lib/shape.py::analyze_shape` 이식 — circularity + elongation
+  + approxPolyDP 다각형 인식 (원형·타원형·캡슐형·장방형·삼각/사각/오각/육각/팔각형·기타)
+- `Vision/SizeMeasurer.py` — **신규** (담당자 원본 없음). minEnclosingCircle + 폰 카메라
+  POC 추정 mm/px (3~30mm 범위 외 None)
+
+**네트워크 라우터** (`InferenceServer/Routers/Vision.py` 501 → 200):
+- `POST /vision/detect` — raw 이미지 → 검출만 (POC, 단독 테스트)
+- `POST /vision/analyze?crop_id=...` — crop 한 개 분석 (각인·색·모양·크기)
+- ⭐ `POST /vision/detect_remote` — **메인서버 호출 정식 라우터** — AWS S3+RDS 패턴
+  - 입력: `photo_id` · `storage_url` · `get_token` · `mime` · `purpose`
+  - Vision PC 가 보관 PC `10.10.10.122:8004` 에서 직접 이미지 GET
+  - YOLO 검출 → 각 crop 에 OCR + 색 + 모양 + 크기 → 통합 응답
+  - 신뢰도 tier 자동 산정 (HIGH 95+ / MEDIUM 70-95 / LOW 70-)
+  - 각 후보별 `match_keys` (각인·색·모양·크기) — 메인서버 식약처 매칭에 사용
+
+**Schemas** (`Schemas/VisionSchema.py` 보강):
+- `DetectRemoteRequest` / `DetectRemoteResponse` / `DetectRemoteCandidate` 신규
+
+**검증**:
+- 7개 Vision 관련 파일 ast.parse pass
+- WSL venv 실제 호출 smoke: 더미 이미지로 Color=흰색 / Shape=원형 / Size=8.4mm 정상
+- YoloDetector/OcrEngine 인스턴스화 OK (ultralytics/paddleocr 미설치 환경에서도 graceful)
+- Routers/Vision import OK + FastAPI 라우터 등록 가능
+
+**Vision PC 배포 안내** (별도 `Docs/Install/InferenceServerInstall.md` §3.B):
+- 본 `InferenceServer/` 구조를 `10.10.10.128` LLM PC 에서 빌드한 그대로 rsync
+- 환경변수 `MEDIBRIDGE_VISION_ENABLED=true` / `MEDIBRIDGE_LLM_ENABLED=false` / `MEDIBRIDGE_INFERENCE_PORT=8003`
+- 담당자 학습 가중치 `runs/detect/runs/detect/train_single_602020/weights/best.pt` 를
+  `Models/yolo26_pills.pt` 위치로 복사 또는 `MEDIBRIDGE_YOLO_WEIGHTS` 환경변수로 지정
+
+---
+
 ### Fixed · Verified (2026-05-15 — LLM PC 본 구현 점검·보강·빌드 검증)
 
 이전 LLM PC 본 구현 후속 — 빠진 부분 점검 결과:

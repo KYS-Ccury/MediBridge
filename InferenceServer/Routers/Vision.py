@@ -1,12 +1,25 @@
 """
-Vision Router — POST /vision/detect, /vision/analyze
+Vision Router — Vision PC (10.10.10.120:8003)
 
-알약 검출(YOLO26) + 각인·색·모양 분석(PaddleOCR + OpenCV).
+엔드포인트:
+    POST /vision/detect          — 이미지 raw 바이너리 → 검출 (POC)
+    POST /vision/analyze?crop_id — crop 한 개 분석 (각인·색·모양·크기)
+    POST /vision/detect_remote   — ⭐ 메인서버 호출 — 보관 PC GET → 검출 → 통합 분석
+
+⭐ 2026-05-15 — 인효 담당자 코드 (engines/yolo_engine + lib/* + engines/cv_engine) 이식 후
+    네트워크 라우터 작성. AWS S3+RDS 패턴 (사진 본체는 메인서버 통과 X — 보관 PC 직접 GET).
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from typing import Optional
+
+import httpx
+import numpy as np
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from loguru import logger
 
-from Schemas.VisionSchema import DetectResponse, AnalyzeResponse
+from Schemas.VisionSchema import (
+    DetectResponse, AnalyzeResponse, DetectedPill,
+    DetectRemoteRequest, DetectRemoteResponse, DetectRemoteCandidate, BoundingBox,
+)
 from Vision.YoloDetector import YoloDetector
 from Vision.OcrEngine import OcrEngine
 from Vision.ColorClassifier import ColorClassifier
@@ -16,34 +29,154 @@ from Vision.SizeMeasurer import SizeMeasurer
 router = APIRouter(prefix="/vision", tags=["Vision"])
 
 
+# =====================================================
+# POST /vision/detect — 이미지 raw → 검출 (POC, 단독 테스트용)
+# =====================================================
 @router.post("/detect", response_model=DetectResponse)
 async def detect(image: UploadFile = File(...)) -> DetectResponse:
-    """
-    알약 검출 (YOLO26).
+    """단일 이미지 → 검출만 (analyze 는 별도 호출)."""
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="EMPTY_IMAGE")
 
-    요청: 이미지 바이너리 (multipart/form-data)
-    응답: 검출된 알약별 bounding box + crop_id + confidence
-    """
-    # TODO (영역 A 분담):
-    #   1. UploadFile 을 임시 파일로 저장 또는 메모리 버퍼로 변환
-    #   2. YoloDetector.instance().detect(image_bytes) 호출
-    #   3. crop_id 발급 + 각 crop 이미지를 캐시 (analyze에서 재사용)
-    #   4. DetectResponse 반환
-    logger.info(f"[Vision] /detect — file: {image.filename}, size: {image.size}")
-    raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
+    detections = YoloDetector.instance().detect(image_bytes)
+    if not detections:
+        return DetectResponse(
+            detections=[], status="no_pill_detected",
+            message="알약이 검출되지 않았습니다.",
+        )
+    return DetectResponse(detections=detections, status="ok")
 
 
+# =====================================================
+# POST /vision/analyze — crop 한 개 분석 (POC)
+# =====================================================
 @router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze(crop_id: str) -> AnalyzeResponse:
-    """
-    각인 인식 + 색·모양·크기 분석.
+async def analyze(crop_id: str = Query(..., min_length=1)) -> AnalyzeResponse:
+    """이전 detect 단계에서 발급된 crop_id 로 각인·색·모양·크기 분석."""
+    crop = YoloDetector.instance().get_crop(crop_id)
+    if crop is None:
+        raise HTTPException(status_code=404, detail="CROP_NOT_FOUND")
 
-    요청: 이전 detect 단계에서 발급된 crop_id
-    응답: 각인 텍스트, HSV 색상 라벨, 모양, 크기, 신뢰도
+    engraving_text, engraving_conf = OcrEngine.instance().recognize_array(crop)
+    color = ColorClassifier.classify_array(crop)
+    shape = ShapeClassifier.classify_array(crop)
+    size_mm = SizeMeasurer.measure_mm_array(crop)
+
+    # 종합 신뢰도 — 가중 평균 (각인 50% / 색 25% / 모양 25%)
+    overall = (
+        engraving_conf * 0.5
+        + color.confidence * 0.25
+        + (1.0 if shape.label != "기타" else 0.3) * 0.25
+    )
+    return AnalyzeResponse(
+        crop_id=crop_id,
+        engraving_text=engraving_text,
+        engraving_confidence=engraving_conf,
+        color_hsv_label=color.label,
+        shape_label=shape.label,
+        size_mm=size_mm,
+        overall_confidence=round(float(overall), 3),
+    )
+
+
+# =====================================================
+# POST /vision/detect_remote — ⭐ 메인서버 호출용 통합 라우터
+# =====================================================
+@router.post("/detect_remote", response_model=DetectRemoteResponse)
+async def detect_remote(req: DetectRemoteRequest) -> DetectRemoteResponse:
     """
-    # TODO (영역 A 분담):
-    #   1. crop_id 로 caching된 crop 이미지 조회
-    #   2. OcrEngine.instance().recognize(crop) → 각인 텍스트
-    #   3. ColorClassifier.classify(crop) + ShapeClassifier.classify(crop) + SizeMeasurer.measure_mm(crop, calibration)
-    #   4. AnalyzeResponse 반환
-    raise HTTPException(status_code=501, detail="NOT_IMPLEMENTED")
+    메인서버가 photo_id + storage_url + get_token 을 전달.
+    Vision PC 가 보관 PC 에서 이미지 GET → YOLO → OCR + 색·모양·크기 → 통합 응답.
+    """
+    logger.info(
+        f"[Vision] /detect_remote photo_id={req.photo_id} purpose={req.purpose}"
+    )
+
+    # 1) 보관 PC 에서 이미지 GET
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            r = client.get(
+                req.storage_url,
+                headers={"Authorization": f"Bearer {req.get_token}"},
+            )
+        if r.status_code != 200:
+            logger.warning(f"[Vision] storage GET 실패 status={r.status_code}")
+            return DetectRemoteResponse(
+                photo_id=req.photo_id, candidates=[], confidence_tier="LOW",
+                status="storage_get_failed", message=f"storage status={r.status_code}",
+            )
+        image_bytes = r.content
+    except Exception as e:
+        logger.exception(f"[Vision] storage GET 예외: {e}")
+        return DetectRemoteResponse(
+            photo_id=req.photo_id, candidates=[], confidence_tier="LOW",
+            status="storage_get_failed", message=str(e),
+        )
+
+    # 2) YOLO 검출
+    detections = YoloDetector.instance().detect(image_bytes)
+    if not detections:
+        return DetectRemoteResponse(
+            photo_id=req.photo_id, candidates=[], confidence_tier="LOW",
+            status="no_pill_detected",
+        )
+
+    # 3) 각 crop 분석 + 매칭 키 종합
+    candidates = []
+    confidences = []
+    for det in detections:
+        crop = YoloDetector.instance().get_crop(det.crop_id)
+        if crop is None:
+            continue
+
+        engraving_text, engraving_conf = OcrEngine.instance().recognize_array(crop)
+        color = ColorClassifier.classify_array(crop)
+        shape = ShapeClassifier.classify_array(crop)
+        size_mm = SizeMeasurer.measure_mm_array(crop)
+
+        # 식약처 매칭 키 4종 — 메인서버 DurChecker / 낱알식별 매칭에 사용
+        match_keys = []
+        if engraving_text and engraving_text != "각인없음":
+            match_keys.append(f"각인:{engraving_text}")
+        match_keys.append(f"색:{color.label}")
+        match_keys.append(f"모양:{shape.label}")
+        if size_mm is not None:
+            match_keys.append(f"크기:{size_mm}mm")
+
+        candidates.append(DetectRemoteCandidate(
+            crop_id=det.crop_id,
+            bbox=det.bbox,
+            detection_confidence=det.confidence,
+            engraving_text=engraving_text,
+            engraving_confidence=engraving_conf,
+            color_label=color.label,
+            shape_label=shape.label,
+            size_mm=size_mm,
+            match_keys=match_keys,
+        ))
+        # 종합 신뢰도 가중치
+        overall = det.confidence * 0.4 + engraving_conf * 0.4 + color.confidence * 0.2
+        confidences.append(overall)
+
+    # 4) 신뢰도 tier 산정 (요구사항 FR-C4-01)
+    if not confidences:
+        tier = "LOW"
+    else:
+        avg = sum(confidences) / len(confidences)
+        if avg >= 0.95:
+            tier = "HIGH"
+        elif avg >= 0.70:
+            tier = "MEDIUM"
+        else:
+            tier = "LOW"
+
+    logger.info(
+        f"[Vision] /detect_remote 완료 candidates={len(candidates)} tier={tier}"
+    )
+    return DetectRemoteResponse(
+        photo_id=req.photo_id,
+        candidates=candidates,
+        confidence_tier=tier,
+        status="ok",
+    )

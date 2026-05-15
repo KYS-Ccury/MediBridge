@@ -1,28 +1,98 @@
 """
-ShapeClassifier — OpenCV 윤곽선 기반 모양 분류
+ShapeClassifier — 윤곽선 기반 모양 분류
 
-원·타원·캡슐형·기타 등의 사전 정의 라벨로 분류.
+⭐ 2026-05-15 — Vision PC 담당자 (인효) `lib/shape.py` + `engines/cv_engine.py` 이식.
+   원본 카테고리: 원형·타원형·장방형·캡슐형·삼각형·사각형·마름모형·오각형·육각형·팔각형·반원형·기타
+   원본 휴리스틱: circularity + elongation + approxPolyDP 꼭짓점 수
 """
+from dataclasses import dataclass
+from typing import Optional
+
+import cv2
+import numpy as np
+
+
+@dataclass
+class ShapeResult:
+    label: str
+    circularity: float       # 1.0 = 완벽한 원
+    aspect_ratio: float
+    elongation: float        # 회전 사각형 long/short
+
+
+def _classify_from_contour(contour: np.ndarray) -> ShapeResult:
+    """담당자 lib/shape.py 의 analyze_shape 그대로."""
+    if contour is None or len(contour) < 5:
+        return ShapeResult("기타", 0.0, 1.0, 1.0)
+
+    area = cv2.contourArea(contour)
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter == 0 or area == 0:
+        return ShapeResult("기타", 0.0, 1.0, 1.0)
+
+    circularity = 4.0 * np.pi * area / (perimeter * perimeter)
+
+    x, y, w, h = cv2.boundingRect(contour)
+    aspect = w / max(h, 1)
+
+    rect = cv2.minAreaRect(contour)
+    rw, rh = rect[1]
+    short_side = min(rw, rh) if min(rw, rh) > 0 else 1
+    long_side = max(rw, rh)
+    elongation = long_side / short_side
+
+    if circularity >= 0.85 and elongation < 1.2:
+        label = "원형"
+    elif circularity >= 0.65 and 1.2 <= elongation < 1.7:
+        label = "타원형"
+    elif elongation >= 2.5:
+        label = "캡슐형"
+    elif 1.7 <= elongation < 2.5 and circularity >= 0.55:
+        label = "장방형"
+    else:
+        epsilon = 0.04 * perimeter
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+        v = len(approx)
+        polygon_map = {3: "삼각형", 4: "사각형", 5: "오각형", 6: "육각형", 8: "팔각형"}
+        label = polygon_map.get(v, "기타")
+
+    return ShapeResult(
+        label=label,
+        circularity=float(circularity),
+        aspect_ratio=float(aspect),
+        elongation=float(elongation),
+    )
+
+
+def _largest_contour(crop_bgr: np.ndarray) -> Optional[np.ndarray]:
+    """담당자 engines/cv_engine.analyze — Otsu 후 가장 큰 contour."""
+    gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    return max(contours, key=cv2.contourArea)
 
 
 class ShapeClassifier:
-    """알약 crop 이미지의 모양 분류"""
+    """알약 crop 모양 분류 (정적 유틸)."""
+
+    @staticmethod
+    def classify_array(crop_bgr: np.ndarray) -> ShapeResult:
+        if crop_bgr is None or crop_bgr.size == 0:
+            return ShapeResult("기타", 0.0, 1.0, 1.0)
+        cnt = _largest_contour(crop_bgr)
+        if cnt is None:
+            return ShapeResult("기타", 0.0, 1.0, 1.0)
+        return _classify_from_contour(cnt)
 
     @staticmethod
     def classify(crop_image_bytes: bytes) -> str:
-        """
-        Args:
-            crop_image_bytes: JPEG/PNG 바이너리
-
-        Returns:
-            식약처 매칭 키 ("원형", "타원형", "장방형", "캡슐형" 등)
-        """
-        # TODO (영역 A 분담):
-        #   1. 그레이스케일 → threshold (Otsu 권장)
-        #   2. cv2.findContours
-        #   3. 가장 큰 contour 의:
-        #      - aspect ratio (boundingRect)
-        #      - circularity (4*pi*area / perimeter^2)
-        #      - convexity defect 수
-        #   4. 사전 정의 임계값 기반 라벨 매핑
-        return ""
+        try:
+            arr = np.frombuffer(crop_image_bytes, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        except Exception:
+            return "기타"
+        if img is None:
+            return "기타"
+        return ShapeClassifier.classify_array(img).label
