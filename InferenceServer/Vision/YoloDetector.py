@@ -132,6 +132,29 @@ class YoloDetector:
         if img is None:
             return []
 
+        # ⭐ 2026-05-15 — 뷰파인더 크롭.
+        #   PC 가 adb screencap 으로 폰 '화면 전체'(기본 카메라 앱 UI 포함)
+        #   를 캡쳐 → 셔터버튼·전환버튼·썸네일을 YOLO 가 알약으로 오검출.
+        #   상단 상태바 + 하단 카메라 컨트롤 밴드를 잘라 뷰파인더만 남긴다.
+        #   (근본 해결은 폰이 '촬영된 사진'을 보내는 것이나, 현 구조에선
+        #    이 휴리스틱 크롭이 가장 효과적. 비율은 env 로 조정 가능.)
+        crop_top = _env_float("MEDIBRIDGE_YOLO_CROP_TOP", 0.10)
+        crop_bot = _env_float("MEDIBRIDGE_YOLO_CROP_BOTTOM", 0.30)
+        crop_lr = _env_float("MEDIBRIDGE_YOLO_CROP_LR", 0.0)
+        oh, ow = img.shape[:2]
+        # 세로가 가로보다 길 때(폰 스크린샷 추정)만 적용
+        if oh > ow and (crop_top + crop_bot) < 0.85:
+            y0 = int(oh * crop_top)
+            y1 = int(oh * (1.0 - crop_bot))
+            x0 = int(ow * crop_lr)
+            x1 = int(ow * (1.0 - crop_lr))
+            if y1 - y0 > 32 and x1 - x0 > 32:
+                img = img[y0:y1, x0:x1]
+                logger.info(
+                    f"[YoloDetector] 뷰파인더 크롭 {ow}x{oh} "
+                    f"→ {x1 - x0}x{y1 - y0} (top={crop_top} bot={crop_bot})"
+                )
+
         conf = conf_threshold if conf_threshold is not None \
             else _env_float("MEDIBRIDGE_YOLO_CONF", 0.60)
         iou = _env_float("MEDIBRIDGE_YOLO_IOU", 0.45)
