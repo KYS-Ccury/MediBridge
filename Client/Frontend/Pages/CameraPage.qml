@@ -57,12 +57,25 @@ Page {
     }
 
     // --------------------------------------------------
-    // 메인 컨텐츠
+    // 메인 컨텐츠 — 창이 작아도 잘리지 않도록 ScrollView 로 감쌈
     // --------------------------------------------------
-    ColumnLayout {
-        anchors.centerIn: parent
-        width: Math.min(parent.width * 0.9, 600)
-        spacing: 40
+    ScrollView {
+        id: cam_scroll
+        anchors.fill: parent
+        contentWidth: availableWidth
+        clip: true
+
+        Item {
+            width: cam_scroll.availableWidth
+            implicitHeight: Math.max(cam_col.implicitHeight + 48,
+                                     cam_scroll.availableHeight)
+
+            ColumnLayout {
+                id: cam_col
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: Math.max(24, (parent.height - implicitHeight) / 2)
+                width: Math.min(cam_scroll.availableWidth * 0.9, 600)
+                spacing: 40
 
         // 1. 안내 텍스트
         ColumnLayout {
@@ -154,7 +167,9 @@ Page {
                 pill_controller.capture_and_identify()
             }
         }
-        Component.onCompleted: camera_stream_controller.start_stream()
-        Component.onDestruction: camera_stream_controller.stop_stream()
-    }
+                Component.onCompleted: camera_stream_controller.start_stream()
+                Component.onDestruction: camera_stream_controller.stop_stream()
+            } // ColumnLayout(cam_col) 닫기
+        } // Item 닫기
+    } // ScrollView 닫기
 }

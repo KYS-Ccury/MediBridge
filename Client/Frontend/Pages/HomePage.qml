@@ -27,11 +27,26 @@ Page {
         }
     }
 
-    // 최상위 컨테이너를 화면 정중앙에 고정
-    ColumnLayout {
-        anchors.centerIn: parent
-        width: Math.min(parent.width * 0.9, 800) // 화면이 너무 넓어질 때 최대 가로 폭 제한
-        spacing: 36
+    // 창이 콘텐츠보다 작아도 잘리지 않도록 ScrollView 로 감싼다.
+    //   콘텐츠가 뷰포트보다 작으면 세로 중앙, 크면 스크롤.
+    ScrollView {
+        id: home_scroll
+        anchors.fill: parent
+        contentWidth: availableWidth
+        clip: true
+
+        Item {
+            width: home_scroll.availableWidth
+            implicitHeight: Math.max(home_col.implicitHeight + 48,
+                                     home_scroll.availableHeight)
+
+            // 최상위 컨테이너 — 콘텐츠가 작으면 중앙, 크면 위에서부터
+            ColumnLayout {
+                id: home_col
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: Math.max(24, (parent.height - implicitHeight) / 2)
+                width: Math.min(home_scroll.availableWidth * 0.9, 800)
+                spacing: 36
 
         // 1. 타이틀 섹션
         ColumnLayout {
@@ -181,7 +196,9 @@ Page {
                 }
             }
         }
-    } // 💡 최상위 ColumnLayout 닫기
+            } // 💡 최상위 ColumnLayout(home_col) 닫기
+        } // Item 닫기
+    } // ScrollView 닫기
 
     // 페이지 진입 시 능동 가이드 1회 (FR-C6-01)
     Component.onCompleted: {
