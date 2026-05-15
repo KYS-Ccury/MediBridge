@@ -123,8 +123,15 @@ Page {
             SubMenuCard {
                 title: qsTr("최근 식별 결과")
                 iconText: "🔍"
-                enabled: pill_controller.last_request_id.length > 0
-                onClicked: stack.push("IdentifyResultPage.qml")
+                // 사용자 요청: 비활성 대신 항상 활성. 이력 없을 때는 클릭 시 안내.
+                onClicked: {
+                    if (pill_controller.last_request_id.length > 0) {
+                        stack.push("IdentifyResultPage.qml")
+                    } else {
+                        app_controller.show_toast(
+                            qsTr("최근 식별 이력이 없습니다. 먼저 카메라로 약을 촬영해주세요."))
+                    }
+                }
             }
         }
 
