@@ -107,12 +107,89 @@ done
 
 ### 사전 준비
 
+5 대 PC 의 서버 프로세스가 모두 떠 있어야 시연이 가능. **본 PC (WSL Bash) 에서 일괄 트리거** 하는 방법이 가장 빠르고, 각 PC 단독으로도 점검 가능. 아래 순서대로 실행.
+
+#### ① 메인서버 PC — 10.10.10.97 (본 PC, WSL Ubuntu)
+
+```bash
+# WSL Bash — Drogon C++ 메인서버 Production 가동 (TEST_MODE=false)
+#   MariaDB 자동 시작 / 기존 인스턴스 정리 / 환경변수 export / nohup 부팅
+cd ~/MediBridge   # 또는 본 작업 디렉토리
+bash MainServer/Scripts/medibridge-up-prod.sh
+
+# 헬스 확인 (LAN 노출)
+curl -sS http://10.10.10.97:8001/health | head -c 200; echo
+```
+
+#### ② 보관 PC — 10.10.10.122 (`lms@`, DataStorageServer C++)
+
+```bash
+# 본 PC 에서 일괄 — 코드 동기화 + Drogon DataStorageServer 재시작
+bash Scripts/sync-storage-pc.sh --restart
+
+# 또는 보관 PC 단독 실행 (SSH 직접)
+ssh lms@10.10.10.122
+cd ~/바탕화면/MediBridge/DataStorageServer
+bash Scripts/datastorage-up.sh        # MediBridgeDataStorageServer (8004)
+curl -sS http://127.0.0.1:8004/health | head -c 200; echo
+exit
+```
+
+#### ③ Vision PC — 10.10.10.120 (`ai-trainer@`, FastAPI 추론)
+
+```bash
+# 본 PC 에서 일괄 — InferenceServer/ rsync + FastAPI 재시작
+bash Scripts/sync-vision-pc.sh --restart
+
+# 또는 Vision PC 단독 실행 (SSH 직접)
+ssh ai-trainer@10.10.10.120
+cd "/media/ai-trainer/fd234fd8-cefc-4354-bc18-b8babbcf4f31/home/yesom/Desktop/MediBridge/InferenceServer"
+pkill -f 'InferenceServer.*Main.py' 2>/dev/null || true
+set -a; source .env; set +a   # MEDIBRIDGE_VISION_ENABLED=true 등
+nohup ../check_img_ih/venv/bin/python Main.py > /tmp/vision-pc.log 2>&1 &
+sleep 3; curl -sS http://127.0.0.1:8003/health | head -c 200; echo
+exit
+```
+
+#### ④ LLM PC — 10.10.10.128 (`llm-server@`, FastAPI 추론 + Ollama)
+
+```bash
+# 본 PC 에서 일괄 — InferenceServer/ rsync + FastAPI 재시작
+bash Scripts/sync-llm-pc.sh --restart
+
+# 또는 LLM PC 단독 실행 (SSH 직접)
+ssh llm-server@10.10.10.128
+# Ollama 가 떠 있는지 먼저 (보통 systemctl 로 항시 가동)
+systemctl status ollama --no-pager | head -5 || ollama serve &
+cd ~/Desktop/MediBridge/InferenceServer
+pkill -f 'InferenceServer.*Main.py' 2>/dev/null || true
+set -a; source .env; set +a   # MEDIBRIDGE_LLM_ENABLED=true / LLM_PROVIDER=ollama
+nohup .venv/bin/python Main.py > /tmp/llm-pc.log 2>&1 &
+sleep 5; curl -sS http://127.0.0.1:8002/health | head -c 200; echo
+exit
+```
+
+#### ⑤ 4개 PC 헬스 일괄 검증 (본 PC, WSL Bash)
+
+```bash
+for HOST in 10.10.10.97:8001 10.10.10.122:8004 10.10.10.120:8003 10.10.10.128:8002; do
+    echo -n "$HOST → "
+    curl -s --max-time 3 "http://$HOST/health" | head -c 100; echo
+done
+# 4개 모두 200 OK + status: ok / degraded 면 시연 가능
+```
+
+#### ⑥ 클라이언트 PC — Windows (본 PC, Qt 클라)
+
 ```powershell
 # Windows PowerShell — 클라이언트 빌드 (최초 1회 또는 코드 변경 시)
 cd C:\Users\LMS\Desktop\Project\MediBridge\Client\build\Desktop_Qt_6_11_0_MinGW_64_bit-Debug
 # (Qt Creator 에서도 Ctrl+B → Ctrl+R 으로 빌드+실행 가능)
 .\MediBridgeClient.exe
 ```
+
+> ⚠ **순서 중요**: 클라 실행 전 ①~④ 모두 가동 + ⑤ 헬스 OK 확인. 메인서버는 부팅 시 LLM/Vision/Storage PC URL 을 환경변수로 읽으므로 본 PC 가동 시점에 모두 떠 있어야 함.
+> ⚠ **폰 시연**: 본 절차서는 PC 클라 단독 시연 기준. 폰 PWA 연결은 별도 USB 케이블 + `PhoneServer` (클라 부팅 시 자동 가동) — `PhoneStatusIndicator` 가 헤더에 녹색이면 OK.
 
 ### HC-01 — 첫 실행 시 로그인 화면
 
