@@ -448,7 +448,7 @@ Page {
                 }
                 RadioButton {
                     id: source_manual
-                    text: qsTr("직접 입력")
+                    text: qsTr("약 이름 검색")
                     ButtonGroup.group: source_group
                 }
             }
@@ -523,16 +523,91 @@ Page {
                 font.pixelSize: 12
             }
 
-            // ----- 2-c) 직접 입력 -----
-            TextField {
-                id: manual_code_input
+            // ----- 2-c) 약 이름 검색 (품목코드 대신 제품명으로) -----
+            ColumnLayout {
                 visible: source_manual.checked
                 Layout.fillWidth: true
-                placeholderText: qsTr("품목기준코드 (예: 999800001)")
-                inputMethodHints: Qt.ImhDigitsOnly
-                onTextChanged: {
-                    if (source_manual.checked) {
-                        record_dialog.set_selection(text.trim(), qsTr("(직접 입력)"))
+                spacing: 6
+
+                ListModel { id: rd_search_results }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    TextField {
+                        id: manual_code_input   // (id 유지 — onOpened 리셋 호환)
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("약 이름 입력 (예: 타이레놀)")
+                        onAccepted: pill_controller.search_drug_name(text.trim())
+                    }
+                    AppButton {
+                        text: qsTr("검색")
+                        Layout.preferredWidth: 80
+                        enabled: manual_code_input.text.trim().length > 0
+                        onClicked: pill_controller.search_drug_name(
+                                       manual_code_input.text.trim())
+                    }
+                }
+
+                Connections {
+                    target: pill_controller
+                    function onDrug_search_completed(results) {
+                        if (!record_dialog.visible || !source_manual.checked) return
+                        rd_search_results.clear()
+                        for (var i = 0; i < results.length; i++) {
+                            rd_search_results.append({
+                                item_code: results[i].item_code,
+                                drug_name: results[i].drug_name
+                            })
+                        }
+                        if (results.length === 0)
+                            app_controller.show_toast(
+                                qsTr("일치하는 약을 찾지 못했어요."))
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 150
+                    visible: rd_search_results.count > 0
+                    color: "#FAFAFA"
+                    border.color: "#E0E0E0"
+                    radius: 6
+                    ListView {
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        clip: true
+                        model: rd_search_results
+                        spacing: 4
+                        delegate: Rectangle {
+                            width: ListView.view.width
+                            height: 44
+                            color: record_dialog.sel_item_code === model.item_code
+                                   ? "#E3F2FD" : "white"
+                            border.color: record_dialog.sel_item_code === model.item_code
+                                          ? "#1565C0" : "#D5DCE4"
+                            radius: 4
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: record_dialog.set_selection(
+                                    model.item_code, model.drug_name)
+                            }
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                spacing: 1
+                                Label {
+                                    text: model.drug_name
+                                    font.pixelSize: 13; font.bold: true
+                                    color: "#1A2238"; elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Label {
+                                    text: qsTr("코드: ") + model.item_code
+                                    font.pixelSize: 10; color: "#5B6478"
+                                }
+                            }
+                        }
                     }
                 }
             }

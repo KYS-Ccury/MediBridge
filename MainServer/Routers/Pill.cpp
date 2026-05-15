@@ -25,6 +25,7 @@
 #include <sstream>
 #include <chrono>
 #include <algorithm>
+#include <cctype>
 
 using medibridge::database::Connection;
 using medibridge::Config;
@@ -286,33 +287,72 @@ void Pill::handle_identify(const drogon::HttpRequestPtr& req,
                     if (!b64.empty())
                         c.crop_image = "data:image/jpeg;base64," + b64;
 
-                    // --- 2) pill_identification 매칭 (각인>색>모양 가중 스코어) ---
-                    if (vdb && (!eng.empty() || !color.empty() || !shape.empty())) {
+                    // --- 2) pill_identification 매칭 (엄격) ---
+                    //  ⚠ 2026-05-15 재수정: LIKE '%C%' 같은 헐거운 매칭이
+                    //    한 글자 OCR 오인식("C")을 엉뚱한 약(CT=센텔라)에
+                    //    연결하던 문제. → C++ 정규화 후 "각인이 실제로
+                    //    일치할 때만" 채택. 색·모양만으로는 절대 확정 안 함
+                    //    (검정·원형 약이 수십종이라 무의미).
+                    auto norm_alnum = [](const std::string& s) {
+                        std::string r;
+                        for (unsigned char ch : s) {
+                            if (std::isalnum(ch))
+                                r.push_back(std::toupper(ch));
+                        }
+                        return r;
+                    };
+                    const std::string ne = norm_alnum(eng);
+                    // 각인이 2자 미만이면 신뢰 불가 → 미확정 유지
+                    if (vdb && ne.size() >= 2) {
                         try {
-                            // 각인 LIKE (양방향) + 색/모양 일치 점수화.
-                            //   score = 각인부분일치 5 + 색일치 2 + 모양일치 2
-                            std::string q =
+                            auto rows = vdb->execSqlSync(
                                 "SELECT p.item_code, p.drug_name, "
                                 "       p.classification_name, "
-                                "       d.efficacy_text, d.usage_text, "
-                                "  ((CASE WHEN ? <> '' AND "
-                                "        (p.engraving_front LIKE CONCAT('%', ?, '%') "
-                                "      OR p.engraving_back  LIKE CONCAT('%', ?, '%')) "
-                                "    THEN 5 ELSE 0 END) "
-                                " + (CASE WHEN ? <> '' AND p.color_front = ? "
-                                "    THEN 2 ELSE 0 END) "
-                                " + (CASE WHEN ? <> '' AND p.shape = ? "
-                                "    THEN 2 ELSE 0 END)) AS score "
+                                "       p.engraving_front, p.engraving_back, "
+                                "       p.color_front, p.shape, "
+                                "       d.efficacy_text, d.usage_text "
                                 "FROM pill_identification p "
                                 "LEFT JOIN drug_overview d "
-                                "       ON d.item_code = p.item_code "
-                                "HAVING score > 0 "
-                                "ORDER BY score DESC, p.item_code "
-                                "LIMIT 1";
-                            auto mr = vdb->execSqlSync(
-                                q, eng, eng, eng, color, color, shape, shape);
-                            if (!mr.empty()) {
-                                auto row = mr[0];
+                                "       ON d.item_code = p.item_code");
+                            int best_score = 0;
+                            const orm::Row* best = nullptr;
+                            for (const auto& row : rows) {
+                                const std::string nf = norm_alnum(
+                                    row["engraving_front"].isNull() ? ""
+                                    : row["engraving_front"].as<std::string>());
+                                const std::string nb = norm_alnum(
+                                    row["engraving_back"].isNull() ? ""
+                                    : row["engraving_back"].as<std::string>());
+                                int es = 0;
+                                auto strong = [&](const std::string& db) {
+                                    if (db.empty()) return 0;
+                                    if (ne == db) return 10;
+                                    // 부분일치는 더 짧은 쪽 길이 ≥ 3 일 때만
+                                    size_t mn = std::min(ne.size(), db.size());
+                                    if (mn >= 3 &&
+                                        (ne.find(db) != std::string::npos ||
+                                         db.find(ne) != std::string::npos))
+                                        return 6;
+                                    return 0;
+                                };
+                                es = std::max(strong(nf), strong(nb));
+                                if (es == 0) continue;   // 각인 불일치 → 제외
+                                int cs = (!color.empty() &&
+                                    !row["color_front"].isNull() &&
+                                    row["color_front"].as<std::string>() == color)
+                                    ? 2 : 0;
+                                int ss = (!shape.empty() &&
+                                    !row["shape"].isNull() &&
+                                    row["shape"].as<std::string>() == shape)
+                                    ? 2 : 0;
+                                int total = es + cs + ss;
+                                if (total > best_score) {
+                                    best_score = total;
+                                    best = &row;
+                                }
+                            }
+                            if (best && best_score >= 6) {
+                                const auto& row = *best;
                                 c.item_code = row["item_code"].as<std::string>();
                                 c.drug_name = row["drug_name"].as<std::string>();
                                 if (!row["classification_name"].isNull())
@@ -325,10 +365,8 @@ void Pill::handle_identify(const drogon::HttpRequestPtr& req,
                                     c.usage_text =
                                         row["usage_text"].as<std::string>();
                                 const double sc_norm =
-                                    std::min(1.0,
-                                        row["score"].as<double>() / 9.0);
-                                // 검출 신뢰도 × 매칭 점수 종합
-                                c.confidence = det_conf * 0.5 + sc_norm * 0.5;
+                                    std::min(1.0, best_score / 14.0);
+                                c.confidence = det_conf * 0.4 + sc_norm * 0.6;
                             }
                         } catch (const orm::DrogonDbException&) {
                             // 매칭 실패는 미확정으로 둠 (크래시 방지)
