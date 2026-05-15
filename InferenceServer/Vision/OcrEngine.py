@@ -97,12 +97,34 @@ class OcrEngine:
             return None
 
     def _variants(self, img: np.ndarray):
-        """원본 + 가벼운 sharpening — 담당자 _get_variants() 와 동일"""
+        """원본 + sharpening + CLAHE 대비강화.
+
+        ⭐ 2026-05-15 — 음각/양각 각인 가시화용 CLAHE variant 추가.
+           흰 알약에 같은 색으로 음각된 글자(KG 등)는 대비가 거의
+           없어 일반 OCR 이 실패 → CLAHE 로 국소 대비를 끌어올려
+           각인 윤곽을 드러낸다. (모델 재학습 아님, 전처리 보강)
+        """
         yield img
         try:
             kernel = np.array([[0, -0.5, 0], [-0.5, 3, -0.5], [0, -0.5, 0]])
-            sharpened = cv2.filter2D(img, -1, kernel)
-            yield sharpened
+            yield cv2.filter2D(img, -1, kernel)
+        except Exception:
+            pass
+        try:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            yield cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+        except Exception:
+            pass
+        try:
+            # CLAHE + sharpen 조합 (음각 윤곽 더 강조)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+            enh = clahe.apply(gray)
+            k = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+            sharp = cv2.filter2D(enh, -1, k)
+            yield cv2.cvtColor(sharp, cv2.COLOR_GRAY2BGR)
         except Exception:
             pass
 

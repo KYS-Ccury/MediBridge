@@ -65,10 +65,24 @@ def _classify_from_contour(contour: np.ndarray) -> ShapeResult:
 
 
 def _largest_contour(crop_bgr: np.ndarray) -> Optional[np.ndarray]:
-    """담당자 engines/cv_engine.analyze — Otsu 후 가장 큰 contour."""
+    """Otsu 후 가장 큰 contour.
+
+    ⚠ 2026-05-15 버그 수정: THRESH_BINARY_INV 고정은 흰 알약(밝은 배경)
+       에서 배경(직사각 크롭 프레임)을 전경으로 잡아, 원형 알약을
+       4꼭짓점 → '사각형' 으로 오분류했다.
+       → 중앙(=알약)이 속한 쪽을 전경으로 선택.
+    """
     gray = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    _, thresh = cv2.threshold(gray, 0, 255,
+                              cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    h, w = gray.shape[:2]
+    cy0, cy1 = int(h * 0.35), int(h * 0.65)
+    cx0, cx1 = int(w * 0.35), int(w * 0.65)
+    center = thresh[cy0:cy1, cx0:cx1]
+    if center.size > 0 and float((center > 0).mean()) < 0.5:
+        thresh = cv2.bitwise_not(thresh)
+    contours, _ = cv2.findContours(
+        thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
     return max(contours, key=cv2.contourArea)

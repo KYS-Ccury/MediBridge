@@ -137,14 +137,15 @@ async def detect_remote(req: DetectRemoteRequest) -> DetectRemoteResponse:
         shape = ShapeClassifier.classify_array(crop)
         size_mm = SizeMeasurer.measure_mm_array(crop)
 
-        # 식약처 매칭 키 4종 — 메인서버 DurChecker / 낱알식별 매칭에 사용
+        # 매칭 키 — ⚠ 크기(mm)는 제외.
+        #   기준물체(동전 등) 없는 단일 2D 사진에선 카메라 거리에 따라
+        #   값이 제멋대로(같은 알약이 10.7~12.8mm)라 매칭/표시에 부적합.
+        #   size_mm 은 응답 필드로는 유지(참고용)하되 match_keys 엔 불포함.
         match_keys = []
         if engraving_text and engraving_text != "각인없음":
             match_keys.append(f"각인:{engraving_text}")
         match_keys.append(f"색:{color.label}")
         match_keys.append(f"모양:{shape.label}")
-        if size_mm is not None:
-            match_keys.append(f"크기:{size_mm}mm")
 
         # crop 썸네일 인코딩 (최대 변 240px 리사이즈 → JPEG q70 → base64).
         #   다중 알약 시 클라가 "어느 카드 = 어느 실물" 판단하도록 전달.

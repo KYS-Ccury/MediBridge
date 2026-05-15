@@ -372,16 +372,27 @@ void Pill::handle_identify(const drogon::HttpRequestPtr& req,
                             // 매칭 실패는 미확정으로 둠 (크래시 방지)
                         }
                     }
-                    top_score = std::max(top_score, c.confidence);
+                    // ⚠ tier 는 '식별(=약품명 확정)' 신뢰도여야 한다.
+                    //   검출(YOLO)만 잘돼도 매칭 실패면 미확정이므로
+                    //   item_code 가 채워진(=실제 매칭된) 후보만 점수에 반영.
+                    if (!c.item_code.empty())
+                        top_score = std::max(top_score, c.confidence);
                     resp.candidates.push_back(std::move(c));
                 }
 
-                resp.confidence_tier =
-                    schemas::confidence_tier_from_score(top_score);
+                // 매칭된 후보가 하나도 없으면(top_score==0) 무조건 LOW.
+                resp.confidence_tier = (top_score <= 0.0)
+                    ? schemas::ConfidenceTier::LOW
+                    : schemas::confidence_tier_from_score(top_score);
 
+                const bool any_named = top_score > 0.0;
                 resp.guidance.tts_text = resp.candidates.empty()
                     ? "약을 식별하지 못했어요. 다시 촬영해 주세요."
-                    : "식별 결과를 화면에 표시했어요.";
+                    : (any_named
+                        ? "식별 결과를 화면에 표시했어요."
+                        : "약을 검출했지만 어떤 약인지 확정하지 못했어요. "
+                          "화면의 특징을 보고 직접 선택하거나 약사·의사께 "
+                          "확인을 권유드려요.");
                 resp.guidance.fallback_action = resp.candidates.empty()
                     ? schemas::FallbackAction::RECAPTURE : schemas::FallbackAction::NONE;
 
