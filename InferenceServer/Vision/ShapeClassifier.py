@@ -21,7 +21,16 @@ class ShapeResult:
 
 
 def _classify_from_contour(contour: np.ndarray) -> ShapeResult:
-    """담당자 lib/shape.py 의 analyze_shape 그대로."""
+    """모양 분류.
+
+    ⚠ 2026-05-15 — 인효님 원본 engines/cv_engine.analyze 의 '안정적인
+       장방형/원형 로직' 으로 회귀. 이전 이식이 circularity +
+       approxPolyDP(다각형 꼭짓점) 경로를 추가했다가, 컨투어가 잘못
+       잡히면 4꼭짓점→'사각형' 으로 원형 알약을 오분류했다.
+       원본은 minAreaRect 종횡비만 보고 원형/타원형/장방형 3종만
+       판정해 그런 오분류가 구조적으로 불가능 — 이 견고함을 복원.
+       (매우 길쭉한 경우만 캡슐형 추가 — 식약처 카테고리 보존)
+    """
     if contour is None or len(contour) < 5:
         return ShapeResult("기타", 0.0, 1.0, 1.0)
 
@@ -39,28 +48,23 @@ def _classify_from_contour(contour: np.ndarray) -> ShapeResult:
     rw, rh = rect[1]
     short_side = min(rw, rh) if min(rw, rh) > 0 else 1
     long_side = max(rw, rh)
-    elongation = long_side / short_side
+    ratio = long_side / short_side   # 원본의 핵심 지표
 
-    if circularity >= 0.85 and elongation < 1.2:
-        label = "원형"
-    elif circularity >= 0.65 and 1.2 <= elongation < 1.7:
-        label = "타원형"
-    elif elongation >= 2.5:
+    # 원본 임계 그대로 + 캡슐형(매우 길쭉)만 보강
+    if ratio >= 2.5:
         label = "캡슐형"
-    elif 1.7 <= elongation < 2.5 and circularity >= 0.55:
+    elif ratio >= 1.3:
         label = "장방형"
+    elif ratio >= 1.1:
+        label = "타원형"
     else:
-        epsilon = 0.04 * perimeter
-        approx = cv2.approxPolyDP(contour, epsilon, True)
-        v = len(approx)
-        polygon_map = {3: "삼각형", 4: "사각형", 5: "오각형", 6: "육각형", 8: "팔각형"}
-        label = polygon_map.get(v, "기타")
+        label = "원형"
 
     return ShapeResult(
         label=label,
         circularity=float(circularity),
         aspect_ratio=float(aspect),
-        elongation=float(elongation),
+        elongation=float(ratio),
     )
 
 
