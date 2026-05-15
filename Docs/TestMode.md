@@ -3,7 +3,7 @@
 | 항목 | 내용 |
 | --- | --- |
 | **문서 종류** | TestMode (개발 중 더미 응답) 설계서 |
-| **버전** | v0.2 |
+| **버전** | v0.3 |
 | **개정일** | 2026-05-13 |
 | **이전 버전** | v0.1 (2026-05-07) |
 
@@ -127,9 +127,39 @@ MainServer/Services/TestMode/
 
 ---
 
+## 5-A. Dev 로깅 (TestMode 한정)
+
+통합 검증 중 폰 STT 텍스트가 메인서버까지 도달했는지 본문 확인이 필요해, TestMode 일 때만 다음 로그가 출력됩니다.
+
+### MainServer — `Routers/Speech.cpp`
+```
+[Speech][DEV] len=10 cat=PILL_IDENTIFY inj=N text="이 약 뭐예요?"
+```
+- 활성 조건: `Config::instance().test_mode() == true`
+- 길이 + Stage 0.5 의도 분류 결과 + 인젝션 플래그 + 본문 **앞 80자**
+- production 에서는 출력 안 됨 (PII 보호)
+
+### Client — `PhoneAdapter/PhoneServer.cpp`
+```
+[PhoneServer][DEV] text="이 약 뭐예요?"
+```
+- 모든 빌드에서 출력 (빌드 플래그로 비활성 가능)
+- 앞 80자 미리보기
+
+### 사용 예
+```bash
+# WSL 메인서버
+tail -f /tmp/medibridge.log | grep -iE "Speech|DEV"
+```
+
+→ 폰 → 클라 → 메인서버 전 구간에서 텍스트가 정상 전달됐는지 1초 확인 가능.
+
+---
+
 ## 6. 변경 이력
 
 | 버전 | 일자 | 작성자 | 변경 사항 |
 | --- | --- | --- | --- |
 | v0.1 | 2026-05-07 | 팀 (3인) | 초안 — DB-backed dummy 데이터 정책, seed prefix 규칙, 서비스 분기 패턴 |
 | **v0.2** | **2026-05-13** | 팀 (3인) | **사진 흐름 ⑤+⑥ TestMode 분기 명확화** — `/v1/media/{intent, commit, get_token}` 은 TestMode 에서도 **실 DB + 실 HMAC** 으로 동작 (보관 PC 가 같은 시크릿이면 실제 PUT 가능). 레거시 `/v1/media/image` 는 TestMode 한정 fallback. Pill identify 의 운영 모드 분기에서 Vision PC 미가동 시 502 반환 (TestMode 활성화 권장). |
+| **v0.3** | **2026-05-15** | 팀 (3인) | §5-A Dev 로깅 신규 — TestMode 한정 utterance 본문 미리보기 (앞 80자) + 분류 결과 + 인젝션 플래그. PII 보호 정책상 production 에서는 출력 안 됨. 커밋 `0593288`. |

@@ -11,6 +11,52 @@
 
 ## [Unreleased]
 
+### Added · Fixed · Changed (2026-05-15 — 클라이언트 UX·통합 검증 + LLM 모델 선정 진입)
+
+#### 클라이언트 — 사용자 피드백 5건 반영 (Smoke Test)
+- `Client/Frontend/Pages/HomePage.qml` — '최근 식별 결과' 카드 항상 활성 + 이력 없으면 토스트 안내 (commit `ac93cbf`)
+- `Client/Frontend/Pages/IdentifyResultPage.qml` (commit `1dea3fa`, `19f3e94`):
+  - '처음으로' 버튼 `stack.pop()` → `stack.replace('HomePage.qml')` — CameraPage 경유 우회 차단
+  - 복용 기록 다이얼로그 개편 — 약 선택 3소스 (식별 후보 / 내 약 풀 / 직접 입력 ComboBox·TextField) + 풀 멤버십 자동 판정 + 풀 미등록 시 '풀 등록+기록' / '기록만' RadioButton 분기
+  - 메모 placeholder: "예: 아침 식후 30분" → "예: 점심 식후 / 가벼운 두통"
+- `Client/Backend/Controllers/PillController.cpp` + `PillPoolPage.qml` — 약 풀 시드 미표시 가설 보강: 인증 가드 + 진단 로그 + auth 변경 시 자동 재시도 (commit `f671c8c`)
+
+#### 클라이언트 — TTS 어댑터 + 자동 로그인 + 능동/대화형 가이드 (commit `5b3ccae`)
+- `Client/Backend/Tts/TtsAdapter.{h,cpp}` 신규 — Windows SAPI (PowerShell + System.Speech.Synthesis, ko-KR Heami) QProcess 호출
+- 단정 표현 필터 — "복용 가능 / 불가 / 안전합니다 / 위험합니다 / 진단합니다" UTF-16LE binary 임베드 차단
+- `Q_PROPERTY enabled` (QSettings `HKCU\Software\MediBridge\MediBridgeClient\tts\enabled` 영속) + `speak_active_guide` (FR-C6-01) + `speak_conversational_guide` (FR-C6-02)
+- `Client/Backend/Controllers/AuthController` — `restore_session` Q_INVOKABLE + `on_token_expired` 슬롯 + QSettings 토큰 영속화 (FR-C7-04)
+- `Client/Frontend/Pages/HomePage.qml` — 환영 멘트 + 음성 안내 ON/OFF Switch
+- `Client/Frontend/Pages/IdentifyResultPage.qml` — 신뢰도별 가이드 + DUR risk 시 "주의: 위험이 검출되었습니다" 발화
+
+#### 클라이언트 — 폰 STT GUI 표시 버그 수정 (commit `1b87fa4`)
+- `Client/PhoneAdapter/PhoneServer` — `api_client_->speech().send_utterance()` 직접 호출에서 `UtteranceForwarder::forward()` 경유로 변경
+- 효과: `UtteranceForwarder::utterance_received` 시그널 발신 → `VoiceController.current_text` 갱신 → `VoiceInputPage` 실시간 표시
+- Main.cpp 가 `&utterance_forwarder` 주입
+
+#### 클라이언트 — 환경변수 오버라이드 + Qt 6.11 API 보정 (commit `262f7ff`)
+- `Client/Main.cpp` — `MEDIBRIDGE_PHONE_PORT` 환경변수로 PhoneAdapter 포트 오버라이드 (폰 측 8000 점유 시 대안)
+- `Client/PhoneAdapter/PhoneServer.cpp` — Qt 6.11 `QHttpHeaders::values()` 패턴으로 교체 (이전 range-for 컴파일 실패 해결)
+
+#### 메인서버 — TestMode 한정 dev 로깅 (commit `0593288`)
+- `MainServer/Routers/Speech.cpp` — `Config::test_mode()` true 시 `[Speech][DEV] len=N cat=X inj=Y text="앞80자"` 로그
+- `Client/PhoneAdapter/PhoneServer.cpp` — `[PhoneServer][DEV] text="앞80자"` 미리보기
+- PII 보호: production 에서는 본문 미출력
+
+#### Docs 신규
+- `Docs/SmokeTest_2026-05-15.md` — GUI 시연 결과 정리 (통과 8 / 보류 13 / 실패 1 / 추가요청 5)
+- `Docs/Meeting_2026-05-15.md` — 팀 회의록 요약 (LLM·RAG 진입 결정 + 이미지 추론서버 라벨·이미지 미스매치 진단)
+- `Docs/LLM_Model_Candidates.md` — 17개 후보 모델 비교표 + Gemma 4 (Apache 2.0, 2026-04-02 출시) 라인업 + 사업화 의사결정 트리
+
+#### Docs 갱신
+- `Docs/CHANGELOG.md` — 본 항목
+- `Docs/README.md` — 신규 3문서 인덱스 추가
+- `Docs/Api/SpeechApi.md v0.2` — UtteranceForwarder 경유 + dev 로깅
+- `Docs/Install/ClientPcInstall.md` — `MEDIBRIDGE_PHONE_PORT` 환경변수 + TTS 동작 명시
+- `Docs/TestMode.md` — utterance dev 로깅 항목 추가
+
+---
+
 ### Changed (2026-05-13 — 클라이언트 사진 흐름 ⑤+⑥ 통합)
 
 #### 클라이언트 정상 흐름 적용

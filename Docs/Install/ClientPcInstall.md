@@ -5,8 +5,8 @@
 | **문서 종류** | 클라이언트 GUI PC 설치 매뉴얼 |
 | **대상 OS** | Windows 10 / 11 (64-bit) |
 | **역할** | Qt6 + C++ + QML 기반 GUI, 안드로이드 폰 입력 수신, 운용 서버 통신 |
-| **버전** | v1.2 |
-| **작성일** | 2026-05-06 |
+| **버전** | v1.3 |
+| **작성일** | 2026-05-06 (v1.0) / **개정일 2026-05-15 (v1.3)** |
 | **작성자** | 팀 (3인) |
 
 > 본 매뉴얼은 메디브릿지 클라이언트 GUI PC(Windows)에서 설치해야 할 모든 도구의 절차를 정리한 문서이다. 환경 재구축·온보딩 시 본 문서 한 권으로 클라 PC 셋업이 완료되도록 한다.
@@ -243,6 +243,27 @@ adb reverse --list
 
 USB 케이블 분리 시 자동 해제. 재연결 시 다시 `adb reverse tcp:8000 tcp:8000` 실행 필요.
 
+> 🆕 **클라이언트가 자동 처리**: `AdbReverseManager` 가 폰 USB 연결 감지 시 자동으로 `adb reverse tcp:8000 tcp:8000` 실행. 수동 입력 불필요.
+
+#### 7.A.4 폰 측 8000 점유 시 — `MEDIBRIDGE_PHONE_PORT` 환경변수로 대체
+
+일부 폰에 Termux / KSWEB / 기타 개발 도구가 **8000번 포트를 점유** 중이면 `adb reverse` 가 실패. 다음 순서로 해결:
+
+```powershell
+# 1) adb 좀비 청소
+adb reverse --remove-all
+adb kill-server
+adb start-server
+adb reverse tcp:8000 tcp:8000
+
+# 2) 그래도 실패하면 — 포트 변경
+$env:MEDIBRIDGE_PHONE_PORT="18000"
+.\MediBridgeClient.exe
+# 폰 브라우저: http://localhost:18000
+```
+
+> Index.html 은 `window.location.origin` 을 자동 사용하므로 폰 URL 만 바꾸면 모든 fetch (`/v1/speech/utterance`, `/v1/media/image`) 가 자동으로 18000 사용. 환경변수는 기본값 8000 fallback.
+
 ### 7.B 무선 디버깅 (같은 네트워크 환경에서만)
 
 같은 라우터/공유기 환경일 때만 사용. 다른 네트워크면 7.A로.
@@ -372,7 +393,64 @@ scrcpy --audio-source=mic
 - [ ] USB 케이블 연결 + 폰 "USB 디버깅 허용" 승인
 - [ ] `adb devices` 결과에 `<시리얼>     device` 표시
 - [ ] `scrcpy` 실행 시 폰 화면이 PC 창에 미러링됨
-- [ ] (PoC 단계에서) `adb reverse tcp:8000 tcp:8000` 등록 후 `adb reverse --list` 확인
+- [ ] (자동 처리됨) 클라 실행 시 `AdbReverseManager` 가 `adb reverse tcp:8000 tcp:8000` 자동 등록
+
+### 클라이언트 신규 기능 동작 (v0.2.0 이후)
+- [ ] **TTS 환영 멘트** — HomePage 진입 시 Heami 한국어 음성 발화 (Windows SAPI)
+- [ ] **음성 안내 Switch** — HomePage 하단 🔊/🔇 토글이 작동 + QSettings 영속
+- [ ] **자동 로그인** — 종료 → 재실행 시 HomePage 직행
+- [ ] **단정 표현 차단** — TtsAdapter 가 "복용 가능 / 불가" 등 거부 (콘솔에 `BANNED_PHRASE`)
+
+---
+
+## 9-A. 환경변수 정리 (선택)
+
+| 이름 | 기본값 | 설명 |
+|---|---|---|
+| `MEDIBRIDGE_PHONE_PORT` | `8000` | PhoneAdapter HTTP 서버 포트. 폰 측 8000 점유 시 `18000` 등으로 변경. AdbReverseManager 도 같은 포트로 자동 reverse. |
+
+PowerShell 설정 예:
+```powershell
+$env:MEDIBRIDGE_PHONE_PORT="18000"
+.\MediBridgeClient.exe
+```
+
+CMD:
+```cmd
+set MEDIBRIDGE_PHONE_PORT=18000
+MediBridgeClient.exe
+```
+
+기대 로그:
+```
+[Main] MEDIBRIDGE_PHONE_PORT 적용 → 18000
+[PhoneServer] 시작됨 — 포트: 18000
+[AdbReverseManager] adb reverse 실행 — port: 18000
+```
+
+---
+
+## 9-B. QSettings 영속 위치
+
+클라이언트가 사용자 설정을 저장하는 Windows 레지스트리 경로:
+```
+HKCU\Software\MediBridge\MediBridgeClient\
+  ├─ tts\enabled              # bool — 음성 안내 ON/OFF (HomePage Switch)
+  └─ auth\
+      ├─ access_token         # JWT (자동 로그인용)
+      ├─ user_id
+      ├─ email
+      └─ user_name
+```
+
+- 로그아웃 시 `auth/*` 모두 제거
+- 토큰 만료 (401) 감지 시 `auth/*` 자동 제거 + LoginPage 복귀
+- TTS Switch 는 사용자 명시적 토글 시에만 변경
+
+> 검증 방법:
+> ```powershell
+> Get-ItemProperty 'HKCU:\SOFTWARE\MediBridge\MediBridgeClient' | Format-List
+> ```
 
 ---
 
@@ -385,3 +463,4 @@ scrcpy --audio-source=mic
 | v1.2 | 2026-05-07 | 팀 (3인) | **8장 Qt Creator 첫 빌드·실행 절차 신규** — 프로젝트 열기 / Configure / 빌드(Ctrl+B) / 실행(Ctrl+R) / 빌드 에러 트러블슈팅 5종 / 빌드 산출물 위치 정리. 기존 9·10장 번호 한 칸씩 밀림. |
 | **(2026-05-13 메모)** | | | 메인서버 측 인터페이스 확정 — 사진 흐름은 `/v1/media/intent` → 보관 PC 직접 PUT → `/v1/media/commit` 3단계 (MediaApi v0.2). 클라 `Client/MainServerClient/MediaApiClient` 갱신 필요. 상세: [Api/MediaApi.md](../Api/MediaApi.md). 시스템 시작 명령은 [system_prompt.md](../system_prompt.md) 정본 참조. |
 | **(2026-05-13 클라 통합)** | | | `MediaApiClient` 에 `request_intent` / `put_to_storage` / `commit_upload` 3개 메소드 추가, `PillController::on_capture_succeeded` 콜백 체인 4단계 (intent → PUT 보관 PC → commit → identify) 교체 완료. 사진 본체가 메인서버를 통과하지 않는 정상 흐름 작동. 레거시 `upload_image` 는 fallback 으로 유지. |
+| **v1.3** | **2026-05-15** | 팀 (3인) | ① §7.A.3 자동 reverse 동작 메모 추가 (AdbReverseManager). ② §7.A.4 신규 — 폰 측 8000 점유 시 `MEDIBRIDGE_PHONE_PORT` 환경변수로 18000 등 변경. ③ 체크리스트에 클라 신규 기능 (TTS 환영 멘트 / 음성 안내 Switch / 자동 로그인 / 단정 표현 차단) 추가. ④ §9-A 환경변수 표 신규. ⑤ §9-B QSettings 영속 위치 신규 (HKCU\Software\MediBridge\MediBridgeClient). 관련 커밋: `5b3ccae` (TTS+자동로그인) · `262f7ff` (포트 환경변수). |

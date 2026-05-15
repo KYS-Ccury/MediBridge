@@ -27,6 +27,9 @@
 | **TestMode 설계서** | [TestMode.md](TestMode.md) | 추론·파일저장 우회 + DB seed 응답 (개발용) |
 | **시스템 운영 명령어** | [system_prompt.md](system_prompt.md) | 메인·보관 PC 켜기/끄기/로그/포트 — 단계 가이드 |
 | **설치 매뉴얼** | [Install/](Install/) | OS·기기별 설정. MainServer v0.3 + **DataStorage 신규** |
+| **시연 테스트 결과** ⭐ | [SmokeTest_2026-05-15.md](SmokeTest_2026-05-15.md) | GUI 시연 결과 (통과·보류·실패·피드백 + 재시연 가이드) |
+| **팀 회의록** ⭐ | [Meeting_2026-05-15.md](Meeting_2026-05-15.md) | 2026-05-15 — LLM·RAG 진입 결정 + 이미지 추론서버 진단 |
+| **LLM 모델 후보 비교** ⭐ | [LLM_Model_Candidates.md](LLM_Model_Candidates.md) | 17개 후보 비교 — **Gemma 4 (Apache 2.0, 2026-04-02 출시)** 라인업 포함, 사업화 의사결정 트리 |
 
 ---
 
@@ -39,7 +42,7 @@
 | [HistoryApi.md](Api/HistoryApi.md) | 모듈 2 — 복약 이력 | v0.1 |
 | [ReportApi.md](Api/ReportApi.md) | 모듈 5 — 통합 보고서 (HTML/PDF) | **v0.2** |
 | [MediaApi.md](Api/MediaApi.md) | 미디어 송수신 — intent/commit/get_token + 보관 PC 직접 PUT ⭐ | **v0.2** |
-| [SpeechApi.md](Api/SpeechApi.md) | 음성 텍스트 (폰 STT) | v0.1 |
+| [SpeechApi.md](Api/SpeechApi.md) | 음성 텍스트 (폰 STT) — UtteranceForwarder 경유 + dev 로깅 | **v0.2** |
 | [PillApi.md](Api/PillApi.md) | 모듈 1 — 식별·DUR + 약 풀 + 단계별 좁히기 + Onboarding 정규화 ⭐ | **v0.3** |
 | [MonitoringApi.md](Api/MonitoringApi.md) | 자원 모니터링 | v0.1 |
 
@@ -62,6 +65,9 @@ Docs/
 ├── 개발계획서_ver2.md
 ├── SecurityChecklist.md
 ├── TestMode.md
+├── SmokeTest_2026-05-15.md           # ⭐ GUI 시연 결과
+├── Meeting_2026-05-15.md             # ⭐ 팀 회의록
+├── LLM_Model_Candidates.md           # ⭐ LLM 모델 비교 (Gemma 4 등)
 ├── 메디브릿지 목업.pptx
 ├── Architecture/
 │   └── MediBridge_Architecture_MVP.pptx   # ⭐ 5대 + 폰 다이어그램 (10 슬라이드)
@@ -166,6 +172,14 @@ MainServer\Scripts\medibridge-portproxy.ps1            # 8001 + 8004 한 번에 
 - ❌ "복용 가능합니다 / 불가합니다"
 - ✅ "추정" + "약사·의사 상담 권유"
 - ✅ DUR 위험 안내 = 식약처 데이터 그대로 인용 (LLM 자연어 변환 금지)
+- 🆕 클라이언트 TtsAdapter 가 단정 표현 binary-level 차단 (`복용 가능 / 불가 / 안전합니다 / 위험합니다 / 진단합니다`)
+
+### 5.4 클라이언트 신규 기능 (2026-05-15)
+- 🔊 **TTS 어댑터** — Windows SAPI ko-KR Heami 음성, QSettings 영속 ON/OFF Switch
+- 🔐 **자동 로그인** — 로그인 → 종료 → 재실행 시 HomePage 직행. 토큰 만료 시 자동 LoginPage 복귀
+- 🎤 **음성 안내 가이드** — 능동 가이드 (환영 멘트) + 대화형 가이드 (신뢰도별 / DUR risk)
+- 📝 **복용 기록 다이얼로그 개편** — 약 선택 3소스 + 풀 미등록 약 분기 (등록+기록 / 기록만)
+- 📱 **폰 측 8000 점유 시** `MEDIBRIDGE_PHONE_PORT=18000` 환경변수로 오버라이드
 
 ---
 

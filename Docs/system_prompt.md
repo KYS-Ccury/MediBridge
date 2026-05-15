@@ -482,6 +482,16 @@ curl -v http://10.10.10.97:8001/health
 | `DATASTORAGE_MAX_BYTES` | `10485760` |
 | `MEDIBRIDGE_STORAGE_SECRET` | (메인서버와 **반드시 동일**) |
 
+### Client (Windows)
+
+| 이름 | 기본값 | 비고 |
+|---|---|---|
+| `MEDIBRIDGE_PHONE_PORT` | `8000` | PhoneAdapter 리스닝 포트. 폰 측 점유 시 `18000` 등. AdbReverseManager 도 자동 추적. PowerShell: `$env:MEDIBRIDGE_PHONE_PORT="18000"; .\MediBridgeClient.exe` |
+
+> 클라이언트는 그 외 설정을 **Windows 레지스트리 QSettings** (`HKCU\Software\MediBridge\MediBridgeClient`) 에 영속화:
+> - `tts\enabled` — 음성 안내 ON/OFF
+> - `auth\access_token` · `user_id` · `email` · `user_name` — 자동 로그인용
+
 ### 설정 우선순위
 
 ```
