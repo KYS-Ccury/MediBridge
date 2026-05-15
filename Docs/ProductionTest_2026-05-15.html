@@ -2,10 +2,7 @@
 <html lang="ko"><head><meta charset="utf-8"/><title>MediBridge Production Test</title>
 <style>
 @page { size: A4; margin: 18mm 14mm; }
-body {
-  font-family: 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif;
-  color: #1A2238; line-height: 1.55; font-size: 11pt;
-}
+body { font-family: 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif; color: #1A2238; line-height: 1.55; font-size: 11pt; }
 h1 { color: #0F4C81; font-size: 18pt; border-bottom: 3px solid #0F4C81; padding-bottom: 6px; }
 h2 { color: #0F4C81; font-size: 14pt; margin-top: 24px; border-bottom: 1px solid #D5DCE4; padding-bottom: 4px; }
 h3 { color: #1A2238; font-size: 12pt; margin-top: 16px; }
@@ -103,7 +100,10 @@ hr { border: 0; border-top: 1px solid #D5DCE4; margin: 16px 0; }
     echo &quot;$HOST → $(curl -s --max-time 3 http://$HOST/health | head -c 80)&quot;
 done
 </code></pre>
-<p>기대: 4개 모두 <code>200 OK</code> + <code>status:ok</code> (LLM PC 만 <code>degraded</code> — RAG 미설치, 정상).</p>
+<p>기대: <strong>4개 모두 <code>200 OK</code> + <code>status:ok</code> + <code>reasons:[]</code></strong> (RAG 의존성 설치 완료 후).</p>
+<blockquote>
+<p>2026-05-15 후속: LLM PC 의 <code>sentence-transformers</code> + <code>chromadb</code> 미설치로 한때 <code>degraded(rag_not_loaded)</code> 였으나, KURE-v1 모델 사전 다운로드 (~2.5GB) 후 정상 <code>ok</code> 전환. RAG 컬렉션 (<code>pdma_overview</code>, <code>dur_interactions</code>) 은 첫 생성 시 0건 — <code>BuildRagIndex.py</code> 실행으로 채울 수 있음 (시연 필수 아님).</p>
+</blockquote>
 <hr />
 <h2>2. 자동 검증 결과표 (21건, 모두 실측 완료)</h2>
 <blockquote>

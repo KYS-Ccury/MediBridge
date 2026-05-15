@@ -32,7 +32,9 @@ for HOST in 10.10.10.97:8001 10.10.10.122:8004 10.10.10.120:8003 10.10.10.128:80
 done
 ```
 
-기대: 4개 모두 `200 OK` + `status:ok` (LLM PC 만 `degraded` — RAG 미설치, 정상).
+기대: **4개 모두 `200 OK` + `status:ok` + `reasons:[]`** (RAG 의존성 설치 완료 후).
+
+> 2026-05-15 후속: LLM PC 의 `sentence-transformers` + `chromadb` 미설치로 한때 `degraded(rag_not_loaded)` 였으나, KURE-v1 모델 사전 다운로드 (~2.5GB) 후 정상 `ok` 전환. RAG 컬렉션 (`pdma_overview`, `dur_interactions`) 은 첫 생성 시 0건 — `BuildRagIndex.py` 실행으로 채울 수 있음 (시연 필수 아님).
 
 ---
 
