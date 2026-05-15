@@ -292,10 +292,24 @@ void PillController::identify(const QString& image_request_id,
 // =====================================================
 void PillController::load_pool(bool include_inactive)
 {
+    // 인증 가드 — 자동 로그인 직후 토큰이 ApiClientCommon 까지 전파되기 전 호출되면
+    // 401 후 token_expired 가 발신돼 자동 로그아웃까지 갈 수 있다. 사전 차단.
+    if (!api_client_ || !api_client_->is_authenticated()) {
+        qWarning() << "[PillController] load_pool 호출 차단 — 미인증 상태"
+                   << " api_client=" << (api_client_ != nullptr);
+        set_error("NOT_AUTHENTICATED");
+        emit pool_load_failed(last_error_);
+        return;
+    }
+
+    qInfo().nospace() << "[PillController] load_pool 시작 — include_inactive="
+                      << include_inactive;
     set_loading(true);
     api_client_->pill().get_pool(include_inactive,
         [this](const QByteArray& response, int status_code) {
             set_loading(false);
+            qInfo().nospace() << "[PillController] /v1/pill/pool 응답 status="
+                              << status_code << " body=" << response.size() << "B";
             if (status_code != 200) {
                 QString code = "POOL_LOAD_FAILED";
                 const auto err_doc = QJsonDocument::fromJson(response);
@@ -303,12 +317,15 @@ void PillController::load_pool(bool include_inactive)
                     code = err_doc.object().value("error").toObject()
                                   .value("code").toString(code);
                 }
+                qWarning().nospace() << "[PillController] pool 로드 실패 status="
+                                     << status_code << " code=" << code;
                 set_error(code);
                 emit pool_load_failed(last_error_);
                 return;
             }
             const auto doc = QJsonDocument::fromJson(response);
             if (!doc.isObject()) {
+                qWarning() << "[PillController] pool 응답 JSON 객체 아님";
                 set_error("POOL_INVALID_JSON");
                 emit pool_load_failed(last_error_);
                 return;
@@ -332,7 +349,7 @@ void PillController::load_pool(bool include_inactive)
             pool_items_.set_items(items);
 
             qInfo().nospace() << "[PillController] pool 로드 OK — items=" << items.size()
-                              << " total=" << total;
+                              << " total=" << total << " model_rows=" << pool_items_.rowCount();
             emit pool_loaded();
         });
 }

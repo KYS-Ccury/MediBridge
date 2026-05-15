@@ -9,13 +9,38 @@ import "../Components"
 Page {
     id: pool_page
 
-    Component.onCompleted: pill_controller.load_pool(false)
+    // 진입 시 약 풀 로드 — 인증 가드 통과 후에만 호출
+    //   자동 로그인 시 토큰 set 타이밍 이슈로 401 받을 가능성을 차단.
+    function trigger_load() {
+        if (auth_controller.is_authenticated) {
+            console.log("[PillPoolPage] load_pool 호출 — authed=true")
+            pill_controller.load_pool(false)
+        } else {
+            console.warn("[PillPoolPage] 미인증 상태 — load_pool 보류 (auth 변경 시 자동 재시도)")
+        }
+    }
+    Component.onCompleted: trigger_load()
 
     Connections {
         target: pill_controller
         function onPool_changed() { pill_controller.load_pool(false) }
+        function onPool_loaded()  {
+            console.log("[PillPoolPage] pool_loaded — model rows:",
+                        pill_controller.pool_items.rowCount())
+        }
         function onPool_load_failed(error_code) {
             app_controller.show_toast(qsTr("약 풀 로드 실패: ") + error_code)
+        }
+    }
+
+    // 자동 로그인 직후 페이지가 먼저 그려지고 token set 이 뒤늦은 경우 재시도
+    Connections {
+        target: auth_controller
+        function onIs_authenticated_changed() {
+            if (auth_controller.is_authenticated && pool_list.count === 0) {
+                console.log("[PillPoolPage] auth 변경 감지 → load_pool 재시도")
+                pill_controller.load_pool(false)
+            }
         }
     }
 
