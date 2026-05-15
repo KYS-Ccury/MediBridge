@@ -29,7 +29,7 @@
 | **설치 매뉴얼** | [Install/](Install/) | OS·기기별 설정. MainServer v0.3 + **DataStorage 신규** |
 | **시연 테스트 결과** ⭐ | [SmokeTest_2026-05-15.md](SmokeTest_2026-05-15.md) | GUI 시연 결과 (통과·보류·실패·피드백 + 재시연 가이드) |
 | **팀 회의록** ⭐ | [Meeting_2026-05-15.md](Meeting_2026-05-15.md) | 2026-05-15 — LLM·RAG 진입 결정 + 이미지 추론서버 진단 |
-| **LLM 모델 후보 비교** ⭐ | [LLM_Model_Candidates.md](LLM_Model_Candidates.md) | 17개 후보 비교 — **Gemma 4 (Apache 2.0, 2026-04-02 출시)** 라인업 포함, 사업화 의사결정 트리 |
+| **LLM 모델 후보 비교** ⭐ | [LLM_Model_Candidates.md](LLM_Model_Candidates.md) | **v2** — VRAM 16 GB 한도 + 한국어 임베딩 (KURE-v1) + LLM (Gemma 4 E4B 시작) + 외부 API fallback (gpt-4o-mini) + `LlmProvider` 추상화 |
 
 ---
 

@@ -3,226 +3,335 @@
 | 항목 | 값 |
 |---|---|
 | 작성일 | 2026-05-15 |
-| 작성자 | (자료 정리) Claude — 팀 검토용 초안 |
-| 대상 PC | LLM 추론 PC (`10.10.10.128:8002`) |
-| GPU/VM 메모리 | **24 GB** |
+| 개정일 | 2026-05-15 (v2 — 16GB VRAM 한도 + 한국어 임베딩 + 외부 API 옵션 반영) |
+| 작성자 | (자료 정리) Claude — 팀 검토용 |
+| 대상 PC | LLM 학습+추론 PC (`10.10.10.128:8002`) |
+| GPU 총 VRAM | 24 GB |
+| **MediBridge 할당 한도** | **16 GB (임베딩 + LLM 합산)** — 공용 PC, 다른 팀 작업과 공존 |
 | 라이선스 | 상업적 사용 가능 (포트폴리오 → 사업화 대비) |
-| 런타임 후보 | Ollama (1순위) · vLLM · llama.cpp |
+| 런타임 후보 | Ollama (로컬) · OpenAI API (외부) — `LlmProvider` 어댑터로 즉시 전환 |
 
 ---
 
 ## 0. TL;DR — 빠른 결론
 
-| 단계 | 추천 1순위 | 추천 2순위 | 비고 |
-|---|---|---|---|
-| **Stage A** — 추론서버 키값 4종 → 약품 식별·정규화 | **Gemma 4 E4B** (~3 GB Q4) | Qwen2.5 3B (~2 GB Q4) | 가벼움, 한국어 OK, Ollama 즉시 |
-| **Stage B** — 사용자 자연어 질문 응답 + RAG | **Gemma 4 26B A4B** (MoE ~13 GB Q4) | Gemma 4 31B Dense Q4 (~19 GB) | **동주 검증 모델 가능성 ↑** |
-| **Plan B** — 시간 부족 단축 | **Gemma 4 (동주 일주일 테스트 모델)** | — | 이미 24GB 검증, 프롬프트만 개조 |
+### 임베딩 모델 (1개만 고정 상주)
+| 추천 | 모델 | 파라미터 | VRAM (FP16) | 한국어 | 비고 |
+|---|---|---|---|---|---|
+| 🥇 | **nlpai-lab/KURE-v1** | 568 M | ~2.5 GB | ★★★★★ | 고려대 NLP&AI Lab, **MTEB-ko-retrieval 1위**, bge-m3 한국어 fine-tune |
+| 🥈 | dragonkue/BGE-m3-ko | 568 M | ~2.5 GB | ★★★★★ | bge-m3 한국어 fine-tune, KURE-v1 다음 |
+| 🥉 | BAAI/bge-m3 | 568 M | ~2.5 GB | ★★★★☆ | 다국어, 한국어도 강함, MIT |
+| 가벼움 | jhgan/ko-sroberta-multitask | 110 M | ~0.5 GB | ★★★☆☆ | KURE 보다 ~20% 낮음, VRAM 5배 절약 |
 
-> 두 단계를 **한 모델로 합치면** Gemma 4 26B A4B 가 유력 (MoE → 26B 전체이지만 추론 시 4B 만 활성, 컨슈머 GPU 24GB 에 최적).
-> Stage A/B 분리하면 응답 속도 ↑ + 자원 효율 ↑.
+### LLM 모델 (Provider 어댑터로 교체 가능)
+| Stage | Provider | 모델 | VRAM | 응답 (예상) | 비용 |
+|---|---|---|---|---|---|
+| **1순위 시작** | Ollama (Local) | **Gemma 4 E4B Q4** | ~3 GB | ~300-500 ms | 0 |
+| 2순위 — 한국어 ↑ | Ollama (Local) | Qwen2.5 7B Q4 | ~5 GB | ~700-1200 ms | 0 |
+| 3순위 — 더 강력 | Ollama (Local) | Gemma 4 26B A4B Q4 (MoE) | ~13 GB | ~1500-2500 ms | 0 |
+| **🌐 외부 fallback** | OpenAI API | **gpt-4o-mini** | 0 (인터넷) | ~400-800 ms | ~$0.0001/요청 |
+| 🌐 외부 빠른 모델 | OpenAI API | **gpt-4.1-nano** | 0 (인터넷) | ~300-600 ms | ~$0.00006/요청 |
 
-### ⭐ 동주 일주일 테스트 모델 — **Gemma 4** 확정 (2026-04-02 출시)
-- Gemma 4 는 2026-04-02 출시 — 4종 (E2B / E4B / 26B A4B (MoE) / 31B Dense)
-- **라이선스: Apache 2.0** — 상업 사용 완전 자유 (이전 Gemma 2/3 Terms 보다 자유로움)
-- "24GB Max 로 겨우 돌아간다" 표현 매칭:
-
-| 후보 | 사이즈 (Q 양자화) | 24GB 매칭 |
-|---|---|---|
-| **Gemma 4 31B Dense Q4** ⭐ | ~18-20 GB | ★★★ 가장 가능성 높음 (Max 80%) |
-| **Gemma 4 26B A4B Q8** | ~16-19 GB | ★★☆ Max 매칭 |
-| **Gemma 4 26B A4B Q6** | ~14-16 GB | ★★☆ |
-| Gemma 4 26B A4B Q4 | ~13 GB | ★☆☆ (Max 까진 아님) |
-| Gemma 4 31B Dense BF16 | ~62 GB | ❌ 24GB 초과 |
-| Gemma 4 E4B | ~9 GB (BF16) / ~3 GB (Q4) | ❌ Max 표현 안 맞음 |
-
-→ **동주 님께 정확한 모델/양자화 사이즈 확인 요청** (31B Q4 / 26B A4B Q6~Q8 가능성)
+> 사용자 결정 사항: **외부 API 옵션은 "방법 하나" 로 상시 가용** — `LlmProvider` 인터페이스 + OpenAIProvider 구현체를 처음부터 만들어 둬서 코드 1줄 변경으로 전환 가능하게.
 
 ---
 
-## 1. 후보 모델 비교표
+## 1. VRAM 16 GB 예산 — 가능 조합 (1순위~7순위)
 
-> VRAM 추정치는 **Q4_K_M 양자화 기준** (Ollama 기본). bf16 원본은 약 4배.
-> 한국어 점수는 KoBest / KMMLU / Korean LLM Leaderboard 등 공개 벤치 종합 인상 평가.
+| # | 임베딩 | LLM | 합계 VRAM | 한국어 점수 | 추천도 |
+|---|---|---|---|---|---|
+| **1** ⭐ | KURE-v1 (2.5) | **Gemma 4 E4B Q4 (3)** | **5.5 GB** | ★★★★☆ | 🥇 시작 권장 — 매우 여유, 응답 빠름 |
+| **2** ⭐ | KURE-v1 (2.5) | Qwen2.5 7B Q4 (5) | 7.5 GB | ★★★★★ | 🥈 의도 분류 정확도 ↑ 필요 시 업그레이드 |
+| 3 | KURE-v1 (2.5) | Gemma 4 26B A4B Q4 (13) | 15.5 GB | ★★★★★ | ⚠ 16 GB 빠듯, OOM 위험 — 추천 X |
+| 4 | KURE-v1 (2.5) | EXAONE 3.5 7.8B Q4 (5) | 7.5 GB | ★★★★★ | 한국어 최강 ⚠ 비상업 라이선스 |
+| 5 | ko-sroberta (0.5) | Gemma 4 26B A4B Q4 (13) | 13.5 GB | ★★★★☆ | 26B 쓰고 싶으면 임베딩 가벼운 걸로 |
+| **6** ⭐ | KURE-v1 (2.5) | **OpenAI gpt-4o-mini (외부)** | **2.5 GB** | ★★★★★ | 🥇 VRAM 최소화 — LLM 부담 0 |
+| **7** | KURE-v1 (2.5) | OpenAI gpt-4.1-nano (외부) | 2.5 GB | ★★★★☆ | 외부 — 더 저렴/빠름 |
 
-| # | 모델 | 파라미터 | VRAM (Q4) | 한국어 | 라이선스 | Ollama | 본 프로젝트 적합도 |
-|---|---|---|---|---|---|---|---|
-| 1 | **Qwen2.5 1.5B Instruct** | 1.5 B | ~1.0 GB | ★★★☆☆ | Apache 2.0 | ✅ `qwen2.5:1.5b` | Stage A 후보. 매우 가벼움 |
-| 2 | **Qwen2.5 3B Instruct** | 3 B | ~2.0 GB | ★★★★☆ | Qwen RESEARCH (상업 제한) | ✅ `qwen2.5:3b` | ⚠ 3B 만 상업 제한 — Stage A 1순위지만 라이선스 주의 |
-| 3 | **Qwen2.5 7B Instruct** | 7 B | ~4.5 GB | ★★★★☆ | Apache 2.0 | ✅ `qwen2.5:7b` | Stage A+B 통합 — 상업 OK |
-| 4 | **Qwen2.5 14B Instruct** | 14 B | ~9 GB | ★★★★★ | Apache 2.0 | ✅ `qwen2.5:14b` | 충분한 여유 + 강력 |
-| 5 | **Gemma 2 2B Instruct** | 2 B | ~1.5 GB | ★★★☆☆ | Gemma (상업 OK) | ✅ `gemma2:2b` | 레거시 — Gemma 4 출시 후 권장도 ↓ |
-| 6 | **Gemma 2 9B Instruct** | 9 B | ~5.5 GB | ★★★★☆ | Gemma (상업 OK) | ✅ `gemma2:9b` | 레거시 |
-| 7 | **Gemma 2 27B Instruct** | 27 B | ~16 GB | ★★★★☆ | Gemma (상업 OK) | ✅ `gemma2:27b` | 레거시 |
-| 7-A | **Gemma 4 E2B** | ~2.3 B 효과 | ~1.5 GB Q4 | ★★★★☆ | **Apache 2.0** ✅ | ✅ `gemma4:e2b` | Stage A 후보, 128K 컨텍스트 |
-| 7-B | **Gemma 4 E4B** | ~4.5 B 효과 | ~3 GB Q4 | ★★★★☆ | **Apache 2.0** ✅ | ✅ `gemma4:e4b` | Stage A 1순위, 128K |
-| 7-C | **Gemma 4 26B A4B** (MoE) ⭐ | 26B / 4B active | ~13 GB Q4 · ~19 GB Q8 | ★★★★★ | **Apache 2.0** ✅ | ✅ `gemma4:26b-a4b` | **MoE — 24GB 최적**, 256K |
-| 7-D | **Gemma 4 31B Dense** ⭐ | 31 B | ~19 GB Q4 · BF16 불가 | ★★★★★ | **Apache 2.0** ✅ | ✅ `gemma4:31b` | **동주 24GB Max 검증 추정**, 256K |
-| 8 | **Llama 3.2 1B Instruct** | 1 B | ~0.8 GB | ★★☆☆☆ | Llama 3.2 (상업 OK, MAU 7억 미만) | ✅ `llama3.2:1b` | 한국어 약함. fine-tune 필요 |
-| 9 | **Llama 3.2 3B Instruct** | 3 B | ~2.2 GB | ★★★☆☆ | Llama 3.2 (상업 OK) | ✅ `llama3.2:3b` | 영문 강세. 한국어 fine-tune 권장 |
-| 10 | **Llama 3.1 8B Instruct** | 8 B | ~5 GB | ★★★☆☆ | Llama 3.1 (상업 OK) | ✅ `llama3.1:8b` | Bllossom 등 한국어 fine-tune 풍부 |
-| 11 | **Bllossom-Llama-3-8B** | 8 B | ~5 GB | ★★★★☆ | Llama 3 (상업 OK) | ✅ `MLP-KTLim/llama-3-Korean-Bllossom-8B` | **한국어 풀 파인튜닝** — 서울대 MLP 연구실 |
-| 12 | **EXAONE 3.5 2.4B Instruct** | 2.4 B | ~1.8 GB | ★★★★☆ | EXAONE AI Model License (연구·비상업) | ✅ `exaone3.5:2.4b` | ⚠ **비상업 라이선스** — 포트폴리오 OK, 사업화 X |
-| 13 | **EXAONE 3.5 7.8B Instruct** | 7.8 B | ~5 GB | ★★★★★ | EXAONE AI Model License (연구·비상업) | ✅ `exaone3.5:7.8b` | 한국어 최강급 ⚠ 비상업 |
-| 14 | **EXAONE 3.5 32B Instruct** | 32 B | ~19 GB | ★★★★★ | EXAONE AI Model License (연구·비상업) | ✅ `exaone3.5:32b` | 24GB 가능 ⚠ 비상업 |
-| 15 | **Solar 10.7B Instruct** | 10.7 B | ~7 GB | ★★★★★ | CC-BY-NC-4.0 (Solar Mini) | ✅ `solar:10.7b` | ⚠ 비상업 — Upstage 한국어 강점 |
-| 16 | **Solar Pro Preview 22B** | 22 B | ~14 GB | ★★★★★ | Solar AI License (상업 가능, 조건부) | ⚠ 부분 지원 | 한국어 최상위 — 라이선스 조건 확인 필요 |
-| 17 | **HyperCLOVA X SEED 1.5B** | 1.5 B | ~1 GB | ★★★★☆ | HyperCLOVA X SEED License (상업 OK, 별도 약관) | ⚠ HF 직접 로드 | 네이버 한국어 네이티브 작은 모델 |
-
----
-
-## 2. 평가 기준별 단계 추천
-
-### Stage A — 추론서버 키값 4종 → 약품명 정규화 / 자연어 요약
-
-**입력 (추정)**:
-```json
-{
-  "marking_text": "GS-7",
-  "color": "WHITE",
-  "shape": "ROUND",
-  "size_mm": 9.2
-}
+### 💡 권장 시작 순서
+```
+Stage 1 (이번 주):   #1 — KURE-v1 + Gemma 4 E4B Q4  →  Ollama 셋업 PoC
+Stage 2 (성능 부족): #2 — KURE-v1 + Qwen2.5 7B Q4   →  의도 분류 정확도 측정
+Stage 3 (전환 검토): #6 — KURE-v1 + gpt-4o-mini     →  외부 API 어댑터 가동
 ```
 
-**원하는 출력**:
-- 식약처 낱알식별 캐시 매칭에 사용할 정규화된 키
-- 또는 "원형 흰색 정제, 각인 GS-7, 직경 약 9mm" 같은 자연어 요약 1-2문장
-
-**판단**: 매우 단순한 입출력. **1.5~3B 모델로 충분**.
-
-| 순위 | 모델 | 사유 |
-|---|---|---|
-| 🥇 | Qwen2.5 7B (Apache 2.0) | Stage B 와 통합 가능. 안전한 라이선스. |
-| 🥈 | Gemma 2 2B | 더 가벼움. 동일 패밀리(Gemma 2 9B) 와 일관성. |
-| 🥉 | Llama 3.2 3B | 영문 강세지만 키 매칭에는 충분. |
-
-### Stage B — 사용자 자연어 질문 응답 (의도 분류 / 약명 정규화 / 비의료 일반 안내 / RAG 요약)
-
-**입력**: 폰 STT 텍스트 (예: "타이레놀이 위장에 안 좋아?")
-**원하는 출력**:
-- 의도 카테고리 (PILL_IDENTIFY / RISK_CHECK / HISTORY_QUERY / REPORT_REQUEST / OTHER) — JSON 스키마 강제
-- 또는 비의료 정보 RAG 요약 (식약처 e약은요 그대로 인용)
-
-**판단**: 한국어 이해 정확도 중요. **7-14B 모델 권장**.
-
-| 순위 | 모델 | 사유 |
-|---|---|---|
-| 🥇 | **Gemma 2 9B** | 회의 中 동주 일주일 테스트로 24GB 동작 검증됨 ✅ 상업 OK |
-| 🥈 | Qwen2.5 14B | 한국어 정확도 ↑ + 24GB 여유 (Q4 ~9GB) |
-| 🥉 | Bllossom-Llama-3-8B | 서울대 MLP 한국어 풀 파인튜닝 |
+→ **시작은 #1**, 응답 시간·정확도 측정 결과 따라 **#2 또는 #6 으로 전환**.
 
 ---
 
-## 3. 라이선스 정리 (상업화 대비)
+## 2. 임베딩 모델 상세 비교
 
-| 라이선스 | 상업 사용 | 비고 |
-|---|---|---|
-| **Apache 2.0** (Qwen2.5 1.5B/7B/14B) | ✅ 자유 | 가장 안전 |
-| **Gemma Terms of Use** (Gemma 2 전 모델) | ✅ 조건부 | "harmful use" 금지. 일반 상업 OK |
-| **Llama 3.x** | ✅ 조건부 | MAU 7억 미만이면 자유. 포트폴리오는 무관 |
-| **Qwen RESEARCH** (Qwen2.5 3B/72B) | ❌ 제한 | 연구·학술만 |
-| **EXAONE AI Model License** | ❌ 비상업 | 연구·교육·평가만. 포트폴리오 데모는 가능, 사업화 X |
-| **CC-BY-NC-4.0** (Solar Mini 10.7B) | ❌ 비상업 | 상업화 시 변경 필요 |
-| **HyperCLOVA X SEED License** | ✅ 조건부 | 별도 약관 확인 필요 |
+> 한국어 알약 데이터·문서 (DUR·식약처 e약은요) 검색용. **MTEB-ko-retrieval 벤치 기준 정렬**.
 
-> **포트폴리오 단계**: EXAONE / Solar Mini 도 무방 (비영리 데모).
-> **사업화 단계 진입 시**: Qwen2.5 7B/14B (Apache) 또는 Gemma 2 9B (Gemma Terms) 로 교체 권장.
+| # | 모델 | 파라미터 | 차원 | Max Token | VRAM | MTEB-ko Recall | 라이선스 | 비고 |
+|---|---|---|---|---|---|---|---|---|
+| 1 | **nlpai-lab/KURE-v1** | 568 M | 1024 | 8192 | ~2.5 GB | **0.7385** | MIT | 🥇 고려대 NLP&AI Lab, 2024-12-21 릴리스 |
+| 2 | dragonkue/BGE-m3-ko | 568 M | 1024 | 8192 | ~2.5 GB | ~0.73 | MIT | bge-m3 한국어 fine-tune |
+| 3 | upskyy/bge-m3-Korean | 568 M | 1024 | 8192 | ~2.5 GB | ~0.72 | MIT | bge-m3 한국어 fine-tune |
+| 4 | BAAI/bge-m3 | 568 M | 1024 | 8192 | ~2.5 GB | 0.7295 | MIT | 다국어 — 한국어도 강함 |
+| 5 | intfloat/multilingual-e5-large | 560 M | 1024 | 512 | ~2.0 GB | ~0.65 | MIT | 다국어 |
+| 6 | jhgan/ko-sroberta-multitask | 110 M | 768 | 512 | ~0.5 GB | 0.4693 | Apache 2.0 | 한국어 SBERT, 가벼움 |
+
+### 권장 임베딩 — **KURE-v1**
+- 한국어 검색 SOTA (MTEB-ko-retrieval 1위)
+- bge-m3 기반 fine-tune 이라 안정적
+- 1024차원 + 8192 토큰 long context — DUR 페어 + e약은요 섹션 단위 청크 모두 커버
+- VRAM 2.5 GB — 16 GB 한도에서 LLM 에 13.5 GB 여유
 
 ---
 
-## 4. 빠른 셋업 명령 (Ollama 기준)
+## 3. LLM Local 후보 — VRAM Q4 양자화 기준
 
+> "16 GB - 임베딩 2.5 GB = LLM 13.5 GB 한도" 기준.
+
+| # | 모델 | 파라미터 | VRAM (Q4) | 한국어 | 라이선스 | Ollama 태그 | 16GB 한도 |
+|---|---|---|---|---|---|---|---|
+| 1 | **Gemma 4 E4B** ⭐ | 4.5 B (effective) | ~3 GB | ★★★★☆ | Apache 2.0 | `gemma4:e4b` | ✅ 매우 여유 |
+| 2 | Gemma 4 E2B | 2.3 B | ~1.5 GB | ★★★★☆ | Apache 2.0 | `gemma4:e2b` | ✅ 가장 가벼움 |
+| 3 | **Qwen2.5 7B** ⭐ | 7 B | ~5 GB | ★★★★☆ | Apache 2.0 | `qwen2.5:7b` | ✅ 여유 |
+| 4 | Qwen3 8B | 8 B | ~5 GB | ★★★★☆ | Apache 2.0 | `qwen3:8b` | ✅ 더 최신 |
+| 5 | Llama 3.1 8B | 8 B | ~5 GB | ★★★☆☆ | Llama 3.x | `llama3.1:8b` | ✅ 한국어 fine-tune 필요 |
+| 6 | Bllossom-Llama-3-8B | 8 B | ~5 GB | ★★★★☆ | Llama 3 | `MLP-KTLim/llama-3-Korean-Bllossom-8B` | ✅ 한국어 fine-tune 완료 |
+| 7 | EXAONE 3.5 7.8B | 7.8 B | ~5 GB | ★★★★★ | ⚠ 비상업 | `exaone3.5:7.8b` | ✅ 단 사업화 X |
+| 8 | Qwen2.5 14B | 14 B | ~9 GB | ★★★★★ | Apache 2.0 | `qwen2.5:14b` | ✅ 한국어 ↑ |
+| 9 | Gemma 4 26B A4B | 26 B / 4 active | ~13 GB | ★★★★★ | Apache 2.0 | `gemma4:26b-a4b` | ⚠ 임베딩 합쳐서 15.5 GB |
+| 10 | Gemma 4 31B Dense | 31 B | ~19 GB | ★★★★★ | Apache 2.0 | `gemma4:31b` | ❌ 단독으로도 한도 초과 |
+| 11 | Qwen2.5 3B | 3 B | ~2 GB | ★★★★☆ | ⚠ Research only | `qwen2.5:3b` | ✅ 라이선스 주의 |
+
+### 권장 시작 — **Gemma 4 E4B Q4**
+- VRAM 3 GB (임베딩 2.5 + LLM 3 = **5.5 GB**) — 16 GB 한도에서 **10 GB 여유**, 다른 팀 작업 충돌 위험 ↓
+- 응답 ~300-500 ms (의도 분류·정규화에는 충분)
+- Apache 2.0 — 사업화 OK
+- 128 K 컨텍스트 — 약품 정보 긴 텍스트 처리 OK
+
+---
+
+## 4. 외부 API 옵션 — OpenAI 어댑터
+
+회의에서 결정한 **"추론 시간 보고 외부 API 사용 옵션"** 을 처음부터 지원하도록 설계.
+
+### 4.1 추천 모델
+
+| 모델 | 입력 가격 | 출력 가격 | 한국어 | 응답 속도 | 추천 |
+|---|---|---|---|---|---|
+| **gpt-4o-mini** | $0.15 / 1M tok | $0.60 / 1M tok | ★★★★★ | ~400-800 ms | 🥇 안정적 균형 |
+| **gpt-4.1-nano** | $0.10 / 1M tok | $0.40 / 1M tok | ★★★★☆ | ~300-600 ms | 🥈 가장 저렴·빠름 (2025-04 출시) |
+| gpt-4o | $2.50 / 1M tok | $10.00 / 1M tok | ★★★★★ | ~600-1500 ms | 비용 큼, 의도 분류엔 과함 |
+
+### 4.2 비용 시뮬레이션 — 의도 분류 1회 (시스템 프롬프트 100 + 입력 50 + 출력 30 토큰 = 180 토큰)
+
+| 모델 | 1회 비용 | 1,000회 비용 | 10,000회 비용 (월 시연 가정) |
+|---|---|---|---|
+| gpt-4o-mini | $0.000040 | $0.04 ≈ 53원 | $0.40 ≈ 530원 |
+| gpt-4.1-nano | $0.000025 | $0.025 ≈ 33원 | $0.25 ≈ 330원 |
+
+→ **포트폴리오 시연·개발 단계 비용 사실상 무시 가능** ($1 미만/월).
+
+### 4.3 외부 API 사용 시 고려사항
+
+| 항목 | 영향 | 대응 |
+|---|---|---|
+| 인터넷 의존 | 오프라인 시 동작 X | 로컬 Provider 로 자동 fallback |
+| 데이터 외부 송신 | OpenAI 서버 도착 — 개인정보 정책 검토 필요 | 발화 텍스트 자체만 송신 (PII 마스킹 X 도 가능) |
+| API Key 보안 | 노출 시 비용 폭주 | `OPENAI_API_KEY` 환경변수, .env 파일 git 제외 |
+| Rate Limit | RPM 제한 (계정·티어별) | 큐잉·exponential backoff |
+| 응답 가변성 | 모델 업데이트 시 출력 변경 | `model="gpt-4o-mini-2025-XX-XX"` 고정 권장 |
+| 한국어 정확도 | OpenAI 한국어 매우 우수 | 별도 fine-tune 불필요 |
+
+### 4.4 의료 안내 영역 정책 (필수 준수)
+
+⚠ **OpenAI 사용 시에도 의료 안내 영역에는 호출 X** — 요구사항 §3.2.
+- ✅ 의도 분류 / 약명 정규화 / 비의료 일반 안내 → OpenAI 가능
+- ❌ DUR 위험 안내 / 진단성 응답 → OpenAI 도 미사용 (식약처 데이터 그대로 인용)
+
+---
+
+## 5. LlmProvider 추상화 패턴
+
+코드 1줄로 Ollama ↔ OpenAI 전환 가능하게 설계.
+
+```python
+# InferenceServer/Llm/LlmProvider.py
+from typing import Protocol, Optional
+from dataclasses import dataclass
+
+@dataclass
+class ChatResponse:
+    text: str
+    json_obj: Optional[dict]
+    latency_ms: int
+    provider: str           # "ollama" / "openai"
+    model: str
+
+class LlmProvider(Protocol):
+    def chat(self, *, system: str, user: str,
+             format: str | None = None,
+             temperature: float = 0.0,
+             timeout_ms: int = 5000) -> ChatResponse: ...
+
+# 구현체 1
+class OllamaProvider:
+    def __init__(self, model="gemma4:e4b", host="http://localhost:11434"):
+        ...
+
+# 구현체 2
+class OpenAIProvider:
+    def __init__(self, model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY")):
+        ...
+
+# 팩토리 — 환경변수로 결정
+def make_provider() -> LlmProvider:
+    backend = os.getenv("MEDIBRIDGE_LLM_BACKEND", "ollama")
+    if backend == "openai":
+        return OpenAIProvider(model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+    return OllamaProvider(model=os.getenv("OLLAMA_MODEL", "gemma4:e4b"))
+```
+
+### 환경변수
 ```bash
-# 1. Ollama 설치 (Linux)
+# 로컬 (기본)
+MEDIBRIDGE_LLM_BACKEND=ollama
+OLLAMA_MODEL=gemma4:e4b
+
+# 외부 API (전환 시)
+MEDIBRIDGE_LLM_BACKEND=openai
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-...
+```
+
+라우터 코드는 추상화에 의존:
+```python
+from Llm.LlmProvider import make_provider
+provider = make_provider()                          # 시작 시 1회
+resp = provider.chat(system=SYS, user=text, format="json")
+```
+
+→ 모델 교체 시 코드 0줄 변경, 환경변수만 수정.
+
+---
+
+## 6. 응답 시간 측정 → 전환 의사결정 트리
+
+```
+Stage 1 #1 (KURE-v1 + Gemma 4 E4B) PoC
+   ↓
+   응답 시간 측정 (의도 분류 100회 평균)
+   ├─ < 500 ms          → 그대로 유지 ✅
+   ├─ 500-1500 ms       → Stage 2 #2 (Qwen2.5 7B) 검토
+   │                      또는 외부 API #6 (gpt-4o-mini)
+   ├─ > 1500 ms         → 외부 API #6 즉시 전환
+   └─ 정확도 < 80%      → Stage 2 #2 또는 외부 API #6
+```
+
+측정 스크립트는 `TrainingServer/Scripts/EvalPrompts.py` (신규 예정) 에 포함.
+
+---
+
+## 7. 권장 셋업 명령
+
+### Ollama 로컬 (Stage 1 시작)
+```bash
+# 1. Ollama 설치 (Ubuntu)
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 2. 모델 받기 (택일)
-ollama pull gemma4:26b-a4b         # ⭐ MoE 26B/4B active — 24GB 최적 (Apache 2.0)
-ollama pull gemma4:31b             # 31B Dense Q4 — 동주 검증 추정 (Apache 2.0)
-ollama pull gemma4:e4b             # 가벼운 Stage A 후보 (Apache 2.0)
-ollama pull qwen2.5:14b            # 대안 — Apache 2.0
-ollama pull exaone3.5:7.8b         # 한국어 최강 (비상업)
-ollama pull MLP-KTLim/llama-3-Korean-Bllossom-8B  # 한국어 fine-tune
+# 2. 모델 받기 (Q4 자동)
+ollama pull gemma4:e4b              # 권장 시작 ~3 GB
+ollama pull qwen2.5:7b              # 업그레이드 후보 ~5 GB
+ollama pull gemma4:26b-a4b          # 최강 후보 (임베딩과 합치면 빠듯) ~13 GB
 
-# 3. 빠른 한국어 테스트
-ollama run gemma4:26b-a4b "타이레놀 500mg 복용법 알려줘"
-
-# 4. API 서버로 띄우기 (기본 11434 포트)
+# 3. API 서버 (기본 :11434)
 ollama serve
-# → POST http://localhost:11434/api/chat
+
+# 4. 빠른 한국어 테스트
+ollama run gemma4:e4b "타이레놀 500mg 복용법을 한 문장으로"
 ```
 
-`InferenceServer/Llm/IntentClassifier.py` 등에서 `requests.post('http://localhost:11434/api/chat', ...)` 로 호출하면 됨.
+### 임베딩 (Python)
+```bash
+pip install sentence-transformers chromadb
+```
+
+```python
+from sentence_transformers import SentenceTransformer
+embedder = SentenceTransformer("nlpai-lab/KURE-v1", device="cuda")
+vectors = embedder.encode(["타이레놀500mg", "이부프로펜200mg"])
+# (2, 1024)
+```
+
+### 외부 API (전환 시)
+```bash
+pip install openai
+export OPENAI_API_KEY="sk-..."
+export MEDIBRIDGE_LLM_BACKEND=openai
+export OPENAI_MODEL=gpt-4o-mini
+```
 
 ---
 
-## 5. 권장 의사결정 트리
+## 8. 권장 의사결정 트리 (최종)
 
 ```
-사업화 의도 있나?
-├─ 예 (상업 사용 필수)
-│   ├─ 1순위: Gemma 4 26B A4B (MoE, Apache 2.0)
-│   │        → 26B 전체이지만 추론 시 4B 만 활성 — 24GB 컨슈머 GPU 최적
-│   │        → Stage A+B 통합 가능
-│   ├─ 2순위: Gemma 4 31B Dense Q4 (Apache 2.0)
-│   │        → 강력하지만 24GB 의 80% 사용 (Max 근접)
-│   └─ 3순위: Qwen2.5 14B (Apache 2.0)
-│            → MoE 안 쓰는 단순 dense 모델 선호 시
+사업화 의도 + 데이터 외부 송신 가능?
+├─ 외부 송신 OK
+│   ├─ 비용 ↓ 우선        → 🥇 #6 KURE-v1 + gpt-4o-mini (VRAM 2.5GB)
+│   └─ 더 저렴            → #7 KURE-v1 + gpt-4.1-nano
 │
-└─ 아니오 (포트폴리오만, 비상업 OK)
-    ├─ 한국어 최강: EXAONE 3.5 7.8B
-    └─ 검증된 안전: Gemma 4 (동주 일주일 테스트 모델 그대로)
+└─ 외부 송신 X (로컬만)
+    ├─ 시작/MVP            → 🥇 #1 KURE-v1 + Gemma 4 E4B Q4 (VRAM 5.5GB)
+    ├─ 한국어 정확도 ↑    → #2 KURE-v1 + Qwen2.5 7B Q4 (VRAM 7.5GB)
+    └─ 한국어 최강 (비상업) → #4 KURE-v1 + EXAONE 3.5 7.8B (VRAM 7.5GB)
 ```
 
 ### 시간 부족 시 (Plan B 단축 경로)
-- **동주 이전 프로젝트 = Gemma 4 (사이즈 미확정, 26B A4B Q6~Q8 또는 31B Q4 추정)**
-- 프롬프트만 개조 → 추가 학습 비용 0, 모델 다운로드 비용도 이미 처리됨
-- 라이선스 = **Apache 2.0** → 사업화 진입 시 라이선스 변경 없이 그대로 사용 가능 ✅
-- **Gemma 2 → Gemma 4 라이선스 개선**: Gemma Terms (조건부) → Apache 2.0 (완전 자유)
+- **동주 이전 프로젝트 = Gemma 4 (사이즈 미확정)** — variant 가 26B A4B 이상이면 임베딩 합쳐 16 GB 빠듯 → **Gemma 4 E4B 로 다운사이즈 권장**
+- 프롬프트는 그대로 개조해서 재사용
 
 ---
 
-## 6. RAG 데이터 / 벡터 DB 후보 (참고)
+## 9. 다음 액션
 
-LLM 모델 선정과 별개로, **DUR + 식약처 e약은요** RAG 를 어떻게 구성할지:
+- [ ] **동주** — 일주일 테스트한 Gemma 4 variant 확인 (E4B / 26B A4B / 31B?). 16 GB 한도면 E4B 로 다운사이즈 필요할 수 있음
+- [ ] **윤식** — `LlmProvider` 추상화 골격 작성 (`InferenceServer/Llm/LlmProvider.py`)
+- [ ] **공통** — Stage 1 #1 Ollama + Gemma 4 E4B + KURE-v1 PoC (1시간)
+- [ ] **공통** — `EvalPrompts.py` 응답 시간 측정 스크립트 작성
+- [ ] **공통** — 측정 결과 따라 Stage 2 (#2) 또는 외부 API (#6) 전환 결정
 
-| 옵션 | 장점 | 단점 | 권장 |
+---
+
+## 10. 라이선스 정리 (간단)
+
+| 모델 | 라이선스 | 상업 사용 | 비고 |
 |---|---|---|---|
-| **Chroma DB** (local) | 가장 단순, Python 한 줄 설치 | 대용량 시 느림 | 🥇 1순위 (MVP) |
-| **FAISS** (Meta) | 빠름, 검증됨 | API 학습 곡선 | 2순위 |
-| **SQLite + cosine** | 새 의존성 0 | 직접 임베딩 관리 | 3순위 |
-| **RAG 안 씀, SQL 키워드 매칭만** | 가장 빠름, LLM 부담 ↓ | 검색 정확도 ↓ | Plan B |
-
-**임베딩 모델 추천**:
-- `BAAI/bge-m3` — 다국어, Apache 2.0
-- `intfloat/multilingual-e5-large` — 한국어 강세
-- `jhgan/ko-sroberta-multitask` — 한국어 전용
+| nlpai-lab/KURE-v1 | MIT | ✅ 자유 | 고려대 NLP&AI Lab |
+| BAAI/bge-m3 | MIT | ✅ 자유 | 다국어 |
+| Gemma 4 전 모델 | Apache 2.0 | ✅ 자유 | 2026-04-02 출시 |
+| Qwen2.5 7B / 14B | Apache 2.0 | ✅ 자유 | Qwen2.5 3B 만 비상업 |
+| Llama 3.x | Llama Community | ✅ 조건부 | MAU 7억 미만 |
+| EXAONE 3.5 | EXAONE AI Model License | ❌ 비상업 | 연구·평가만 |
+| OpenAI gpt-4o-mini / nano | OpenAI 약관 | ✅ 자유 | 외부 호출, 데이터 처리 약관 검토 |
 
 ---
 
-## 7. 다음 액션
-
-- [ ] **동주** — 본인이 일주일 테스트한 Gemma 4 모델의 정확한 variant 확인 (E4B / 26B A4B / 31B Dense?) + 양자화 사이즈 (Q4 / Q6 / Q8 / BF16?)
-- [ ] **동주** — 프롬프트 개조 가능성 평가 (Plan B 적용 시간 추산)
-- [ ] **윤식** — Stage A/B 통합 vs 분리 결정 (Gemma 4 26B A4B 라면 MoE 라 통합 유리)
-- [ ] **공통** — 라이선스 결정 — Gemma 4 가 Apache 2.0 이므로 사업화 대비도 그대로 OK
-- [ ] **공통** — Ollama 환경 셋업 + Gemma 4 26B A4B PoC (1시간 이내)
-- [ ] **공통** — RAG 벡터 DB 선정 (Chroma 권장)
-- [ ] **공통** — 프롬프트 v1 작성 (시스템 프롬프트 + JSON 스키마 강제 + 인젝션 방어)
-
----
-
-## 8. 참고 자료
+## 11. 참고 자료
+- **KURE 공식 (한국어 임베딩 SOTA)**: https://github.com/nlpai-lab/KURE
+- **BAAI bge-m3**: https://huggingface.co/BAAI/bge-m3
+- **dragonkue/BGE-m3-ko**: https://huggingface.co/dragonkue/BGE-m3-ko
 - **Gemma 4 공식**: https://ai.google.dev/gemma/docs/core
 - **Gemma 4 Google DeepMind**: https://deepmind.google/models/gemma/gemma-4/
 - **Gemma 4 Ollama**: https://ollama.com/library/gemma4
-- **Gemma 4 발표 블로그**: https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/
 - **Ollama Library**: https://ollama.com/library
-- **Korean LLM Leaderboard (Upstage Open-Ko-LLM)**: https://huggingface.co/spaces/upstage/open-ko-llm-leaderboard
-- **KMMLU 한국어 벤치**: https://huggingface.co/datasets/HAERAE-HUB/KMMLU
-- **BAAI bge-m3** 임베딩: https://huggingface.co/BAAI/bge-m3
-- **Bllossom 한국어 LLM**: https://huggingface.co/MLP-KTLim/llama-3-Korean-Bllossom-8B
+- **OpenAI API Pricing**: https://openai.com/api/pricing/
+- **Korean LLM Leaderboard**: https://huggingface.co/spaces/upstage/open-ko-llm-leaderboard
+- **MTEB Leaderboard (다국어)**: https://huggingface.co/spaces/mteb/leaderboard
+
+---
+
+## 12. 변경 이력
+
+| 버전 | 일자 | 변경 사항 |
+|---|---|---|
+| v1 | 2026-05-15 | 초안 — 17개 후보 비교 + Gemma 4 라인업 + 사업화 의사결정 트리 |
+| **v2** | **2026-05-15** | **VRAM 16 GB 한도 + 한국어 특화 임베딩 + 외부 API 옵션 추가** — KURE-v1 (한국어 임베딩 SOTA) 1순위 / Gemma 4 E4B Q4 시작 권장 / OpenAI gpt-4o-mini 외부 fallback / `LlmProvider` 추상화 패턴 / 응답 시간 기반 전환 의사결정 트리 |
 
 ---
 

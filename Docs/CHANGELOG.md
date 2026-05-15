@@ -11,6 +11,25 @@
 
 ## [Unreleased]
 
+### Changed (2026-05-15 — LLM 모델 셋 재설계 v2: 16GB VRAM 한도 + 한국어 임베딩 + 외부 API)
+
+회의 후속 제약 추가 반영:
+- **VRAM 한도 16 GB** — 공용 PC, 다른 팀 작업 공존
+- **임베딩 한국어 특화 필수** — 한국어 알약 데이터·문서 검색
+- **외부 API 옵션** — 추론 시간 측정 후 OpenAI 전환 상시 가용 (`LlmProvider` 추상화)
+
+권장 시작 조합:
+- 임베딩 = **nlpai-lab/KURE-v1** (568M, ~2.5 GB, MTEB-ko-retrieval 1위, MIT)
+- LLM   = **Gemma 4 E4B Q4** (~3 GB, Apache 2.0) → 합계 ~5.5 GB / 16 GB
+- 외부 fallback = **OpenAI gpt-4o-mini** (코드 1줄 변경 X, 환경변수만)
+
+영향 받은 파일:
+- `Docs/LLM_Model_Candidates.md` → v2 — VRAM 예산 7조합 표 / 임베딩 4종 비교 / OpenAI 비용 시뮬레이션 / `LlmProvider` 추상화 패턴 / 응답 시간 기반 전환 트리
+- `Docs/Meeting_2026-05-15.md` §3.1·3.2 → 16GB 한도 + 외부 API 결정 추가
+- `Docs/README.md` → LLM_Model_Candidates 항목 v2 표기
+
+---
+
 ### Changed (2026-05-15 — LLM ↔ Vision PC IP swap)
 
 회의 후속 결정에 따라 두 추론 PC 의 IP 를 스왑.
