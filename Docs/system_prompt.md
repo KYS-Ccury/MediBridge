@@ -468,8 +468,8 @@ curl -v http://10.10.10.97:8001/health
 | `MEDIBRIDGE_STORAGE_MAX_BYTES` | `10485760` | 업로드 최대 (10MB) |
 | `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL` | `300` | PENDING 청소 잡 인터벌 (초) · 0 = 비활성 |
 | `MEDIBRIDGE_PDMA_KEY` | (없음) | 식약처 OpenAPI 키 (운영 시 e약은요 lazy 호출) |
-| `MEDIBRIDGE_INFERENCE_LLM_BASE` | `http://10.10.10.120:8002` | LLM PC URL |
-| `MEDIBRIDGE_INFERENCE_VISION_BASE` | `http://10.10.10.128:8003` | Vision PC URL |
+| `MEDIBRIDGE_INFERENCE_LLM_BASE` | `http://10.10.10.128:8002` | LLM PC URL |
+| `MEDIBRIDGE_INFERENCE_VISION_BASE` | `http://10.10.10.120:8003` | Vision PC URL |
 | `MEDIBRIDGE_TEST_MODE` | `false` | `true` 시 추론·외부저장 우회 → DB seed 응답 |
 | `MEDIBRIDGE_ENV` | `development` | `production` 시 시크릿 미설정 거부 (강제 abort) |
 

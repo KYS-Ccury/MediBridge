@@ -19,8 +19,8 @@
 | ① | **클라이언트 PC (GUI)** | Windows 10/11 | Qt6 + C++ + QML 기반 GUI, 폰 입력 수신, 운용 서버 통신 | [ClientPcInstall.md](ClientPcInstall.md) ✅ |
 | ② | **메인 서버 PC** | Ubuntu 24.04 | **Drogon C++** + MariaDB, JWT, 식약처 데이터 적재, 청소 잡 | [MainServerInstall.md](MainServerInstall.md) ✅ |
 | ③ | **데이터 보관 PC** ⭐ | Ubuntu 24.04 | **Drogon 미니 서버 (port 8004)**, 사진 PUT/GET + HMAC 토큰 검증 | [DataStorageInstall.md](DataStorageInstall.md) ✅ |
-| ④ | **추론 서버 PC (LLM)** | Ubuntu 24.04 (GPU) | LLM·RAG·ChromaDB·Stage 0.5 의도 분류 (10.10.10.120 : 8002) | [InferenceServerInstall.md](InferenceServerInstall.md) ⏳ |
-| ⑤ | **추론 서버 PC (Vision)** | Ubuntu 24.04 (GPU) | YOLO·PaddleOCR·OpenCV (10.10.10.128 : 8003) | [InferenceServerInstall.md](InferenceServerInstall.md) ⏳ |
+| ④ | **추론 서버 PC (LLM)** | Ubuntu 24.04 (GPU) | LLM·RAG·ChromaDB·Stage 0.5 의도 분류 (10.10.10.128 : 8002) | [InferenceServerInstall.md](InferenceServerInstall.md) ⏳ |
+| ⑤ | **추론 서버 PC (Vision)** | Ubuntu 24.04 (GPU) | YOLO·PaddleOCR·OpenCV (10.10.10.120 : 8003) | [InferenceServerInstall.md](InferenceServerInstall.md) ⏳ |
 | ⑥ | **학습 서버** | Ubuntu 24.04 (GPU) | 데이터 수집·모델 학습·검증·배포 (PC 부족 시 ④⑤ 와 동거) | [TrainingServerInstall.md](TrainingServerInstall.md) ⏳ |
 | (입력) | **안드로이드 S24 폰** | Android 14+ | 카메라 + 마이크 + 온디바이스 STT (Galaxy AI / `SpeechRecognizer`) | [AndroidPhoneSetup.md](AndroidPhoneSetup.md) ✅ |
 
@@ -37,9 +37,9 @@
                        │   REST 8001 (JWT)
                        ▼
                   [ 메인 서버 PC :8001 ] ──── REST 8002 ── [ LLM PC ]
-                       │  │  │                            (10.10.10.120)
+                       │  │  │                            (10.10.10.128)
                        │  │  └── REST 8003 ─── [ Vision PC ]
-                       │  │                    (10.10.10.128)
+                       │  │                    (10.10.10.120)
                        │  │                          │
                        │  └── HTTPS 443 ─→ [ 식약처 OpenAPI ]
                        │

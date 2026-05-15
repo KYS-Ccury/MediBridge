@@ -318,9 +318,9 @@ function addSlideHeader(slide, eyebrow, title) {
 
     // r3 — 추론 PC 들 + 데이터 보관
     box(COL.c1, ROW.r3, "LLM PC",
-        "10.10.10.120 : 8002 · GPU\nStage 0.5 · RAG · ChromaDB", C.devLLM);
+        "10.10.10.128 : 8002 · GPU\nStage 0.5 · RAG · ChromaDB", C.devLLM);
     box(COL.c2, ROW.r3, "Vision PC",
-        "10.10.10.128 : 8003 · GPU\nYOLO · PaddleOCR · OpenCV", C.devVision);
+        "10.10.10.120 : 8003 · GPU\nYOLO · PaddleOCR · OpenCV", C.devVision);
     box(COL.c3, ROW.r3, "데이터 보관 PC",
         "10.10.10.122\n사진 전용 저장소", C.devStorage);
 
@@ -498,8 +498,8 @@ function addSlideHeader(slide, eyebrow, title) {
         ["①", "안드로이드 S24",        "USB / adb",          "—",     "Android 14+", "Galaxy AI · adb",                      "카메라 · 마이크 · 온디바이스 STT"],
         ["②", "클라이언트 PC",          "localhost",          "—",     "Windows 10/11", "Qt6 + C++ + QML · QTextToSpeech",     "사용자 GUI · 폰 화면 캡쳐 · TTS"],
         ["③", "메인 서버 PC",           "10.10.10.97",        "8001",  "Ubuntu 24.04",  "Drogon C++ + MariaDB",                 "비즈니스 로직 · 가명 매핑 · DUR"],
-        ["④", "LLM 학습·추론 PC",       "10.10.10.120",       "8002",  "Ubuntu 24.04 + GPU", "FastAPI(예정) · ChromaDB · LLM", "Stage 0.5 · Onboarding RAG · 일반 안내"],
-        ["⑤", "Vision 학습·추론 PC",    "10.10.10.128",       "8003",  "Ubuntu 24.04 + GPU", "FastAPI(예정) · YOLO · PaddleOCR · OpenCV", "알약 검출 · 각인 · 색·모양"],
+        ["④", "LLM 학습·추론 PC",       "10.10.10.128",       "8002",  "Ubuntu 24.04 + GPU", "FastAPI(예정) · ChromaDB · LLM", "Stage 0.5 · Onboarding RAG · 일반 안내"],
+        ["⑤", "Vision 학습·추론 PC",    "10.10.10.120",       "8003",  "Ubuntu 24.04 + GPU", "FastAPI(예정) · YOLO · PaddleOCR · OpenCV", "알약 검출 · 각인 · 색·모양"],
         ["⑥", "데이터 보관 PC",         "10.10.10.122",       "8004",  "Ubuntu 24.04 + 대용량 디스크", "Drogon C++ 미니 서버",         "PUT/GET 직접 (HMAC 토큰 검증)"],
         ["—", "식약처 OpenAPI (외부)",  "apis.data.go.kr",    "443",   "외부 공공데이터포털", "HTTPS · OpenAPI",                  "낱알식별 / DUR / e약은요"],
     ];
@@ -717,7 +717,7 @@ addCommSlide({
     eyebrow: "COMMUNICATION ③",
     title: "메인 서버 ↔ LLM 학습·추론 PC",
     deviceA: "메인 서버 PC\n10.10.10.97",
-    deviceB: "LLM PC\n10.10.10.120 : 8002",
+    deviceB: "LLM PC\n10.10.10.128 : 8002",
     colorA: C.devServer, colorB: C.devLLM,
     arrowColor: C.arrowRest,
     protocol: "REST API on HTTP (FastAPI 예정)",
@@ -745,7 +745,7 @@ addCommSlide({
     eyebrow: "COMMUNICATION ④",
     title: "메인 서버 ↔ Vision 학습·추론 PC",
     deviceA: "메인 서버 PC\n10.10.10.97",
-    deviceB: "Vision PC\n10.10.10.128 : 8003",
+    deviceB: "Vision PC\n10.10.10.120 : 8003",
     colorA: C.devServer, colorB: C.devVision,
     arrowColor: C.arrowRest,
     protocol: "REST API on HTTP (FastAPI 예정)",

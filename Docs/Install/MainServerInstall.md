@@ -149,7 +149,7 @@ export MEDIBRIDGE_TEST_MODE='true'
 {
   "server":    { "port": 8001, "thread_num": 0, "worker_pool_size": 4 },
   "db":        { "host": "127.0.0.1", "port": 3306, "user": "medibridge_app", "name": "medibridge", "pool_size": 10 },
-  "inference": { "llm_base": "http://10.10.10.120:8002", "vision_base": "http://10.10.10.128:8003", "request_timeout_ms": 5000 },
+  "inference": { "llm_base": "http://10.10.10.128:8002", "vision_base": "http://10.10.10.120:8003", "request_timeout_ms": 5000 },
   "storage":   { "base_url": "http://10.10.10.122:8004", "token_ttl_seconds": 300, "max_bytes": 10485760, "cleanup_interval_seconds": 300 },
   "jwt":       { "expire_seconds": 86400 },
   "pdma":      { "api_base_url": "https://apis.data.go.kr" },
@@ -264,7 +264,7 @@ sudo systemctl enable --now medibridge-main
 | production 에서 시드 사용자로 로그인 가능 | seed 미제거. production 적용 전 `DELETE FROM users WHERE email LIKE '%@medibridge.local'`. |
 | 사진 PUT 시 보관 PC 가 401 INVALID_TOKEN | 메인 `MEDIBRIDGE_STORAGE_SECRET` ≠ 보관 PC `MEDIBRIDGE_STORAGE_SECRET`. 동일하게 맞추기. |
 | `format=pdf` 500 `PDF_RENDER_FAILED` | `wkhtmltopdf` 미설치 → `sudo apt install wkhtmltopdf`. 또는 PATH 확인 (`which wkhtmltopdf`). |
-| `/v1/pill/identify` 운영 모드 502 VISION_UPSTREAM_ERROR | Vision PC (10.10.10.128:8003) 미가동. TestMode 활성 또는 Vision PC 띄우기. |
+| `/v1/pill/identify` 운영 모드 502 VISION_UPSTREAM_ERROR | Vision PC (10.10.10.120:8003) 미가동. TestMode 활성 또는 Vision PC 띄우기. |
 | 청소 잡이 동작 안 함 | 부팅 로그에 `[Main] - 청소 잡 등록` 라인 확인. `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL=0` 이면 비활성. |
 
 ---

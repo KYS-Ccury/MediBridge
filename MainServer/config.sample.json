@@ -18,8 +18,8 @@
     },
 
     "inference": {
-        "llm_base":    "http://10.10.10.120:8002",
-        "vision_base": "http://10.10.10.128:8003",
+        "llm_base":    "http://10.10.10.128:8002",
+        "vision_base": "http://10.10.10.120:8003",
         "request_timeout_ms": 5000
     },
 

@@ -161,8 +161,8 @@ MainServer\Scripts\medibridge-portproxy.ps1            # 8001 + 8004 한 번에 
 - GUI 클라이언트 PC (로컬, Windows 10/11)
 - 메인서버 PC `10.10.10.97` (Ubuntu 24.04 + MariaDB)
 - 데이터 보관 PC `10.10.10.122` (Ubuntu 24.04, **사진 전용**)
-- LLM 학습+추론 PC `10.10.10.120` (Ubuntu 24.04 + GPU)
-- Vision 학습+추론 PC `10.10.10.128` (Ubuntu 24.04 + GPU)
+- LLM 학습+추론 PC `10.10.10.128` (Ubuntu 24.04 + GPU)
+- Vision 학습+추론 PC `10.10.10.120` (Ubuntu 24.04 + GPU)
 - 안드로이드 S24 폰 (USB 직결)
 
 > 📌 학습+추론 동거 (여유 PC 부족) — 네트워크 분리 가능 설계로 향후 PC 증설 시 즉시 분리.

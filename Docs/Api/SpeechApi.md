@@ -31,7 +31,7 @@
    ├─ TestMode 시: 키워드 기반 의도 분류 + [Speech][DEV] 본문 미리보기 로그
    └─ Production 시: 추론서버로 의도 분류·등록 LLM 호출
        ↓
-[ InferenceServer (10.10.10.120:8002) ]
+[ InferenceServer (10.10.10.128:8002) ]
 ```
 
 ---
@@ -142,5 +142,5 @@
 | 버전 | 일자 | 변경 사항 |
 | --- | --- | --- |
 | v0.1 | 2026-05-06 | 초안 — 폰 온디바이스 STT 텍스트 송신, Stage 0.5 의도 카테고리, injection_flag, 확장 fallback 자리 정의 |
-| **(2026-05-13 메모)** | [ApiOverview v0.4](ApiOverview.md) 호환. 본 명세 변경 없음. 메인서버 `Routers/Speech.cpp` TestMode 동작. 운영 모드는 LLM PC(`10.10.10.120:8002`) Stage 0.5 가동 필요. `Services/Inference/IntentInferenceClient` 호출 형태 정의됨. |
+| **(2026-05-13 메모)** | [ApiOverview v0.4](ApiOverview.md) 호환. 본 명세 변경 없음. 메인서버 `Routers/Speech.cpp` TestMode 동작. 운영 모드는 LLM PC(`10.10.10.128:8002`) Stage 0.5 가동 필요. `Services/Inference/IntentInferenceClient` 호출 형태 정의됨. |
 | **v0.2** | **2026-05-15** | ① 클라 PhoneServer 가 UtteranceForwarder 경유로 변경 — utterance_received 시그널 → VoiceController.current_text 갱신 → VoiceInputPage 실시간 표시 (commit `1b87fa4`). ② TestMode 한정 dev 로깅 추가 — `[Speech][DEV] len=N cat=X inj=Y text="앞80자"` (Config::test_mode() true 일 때만, commit `0593288`). API 페이로드·응답 스키마 변경 없음 (호환). |

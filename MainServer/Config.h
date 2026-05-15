@@ -37,8 +37,8 @@ public:
     int         inference_request_timeout_ms() const;
 
     // ⭐ v0.3 — 카테고리별 분리 (시스템_연결구조 v2.2)
-    std::string inference_llm_base() const;              // LLM PC (10.10.10.120:8002)
-    std::string inference_vision_base() const;           // Vision PC (10.10.10.128:8003)
+    std::string inference_llm_base() const;              // LLM PC (10.10.10.128:8002)
+    std::string inference_vision_base() const;           // Vision PC (10.10.10.120:8003)
 
     // ----- 식약처 OpenAPI -----
     std::string pdma_api_base_url() const;
@@ -90,8 +90,8 @@ private:
     std::string inference_server_url_  = "http://127.0.0.1:8002";   // legacy
     int         inference_request_timeout_ms_ = 5000;
 
-    std::string inference_llm_base_    = "http://10.10.10.120:8002";
-    std::string inference_vision_base_ = "http://10.10.10.128:8003";
+    std::string inference_llm_base_    = "http://10.10.10.128:8002";
+    std::string inference_vision_base_ = "http://10.10.10.120:8003";
 
     std::string pdma_api_base_url_     = "https://apis.data.go.kr";
     std::string pdma_service_key_      = "";

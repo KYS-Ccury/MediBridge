@@ -54,8 +54,8 @@
 | ② | 클라이언트 PC | **로컬 (localhost)** | Windows 10/11 | Qt6 + QML, 폰 USB 직결 |
 | ③ | 메인 서버 PC | **10.10.10.97** | Ubuntu 24.04 | Drogon C++ + MariaDB 8001/tcp |
 | ④ | 데이터 보관 PC | **10.10.10.122** | Ubuntu 24.04 | **Drogon C++ 미니 서버 8004/tcp**, 사진 PUT/GET + 토큰 검증 |
-| ⑤ | LLM PC (학습+추론) | **10.10.10.120** | Ubuntu 24.04 (GPU) | FastAPI 8002/tcp |
-| ⑥ | Vision PC (학습+추론) | **10.10.10.128** | Ubuntu 24.04 (GPU) | FastAPI 8003/tcp |
+| ⑤ | LLM PC (학습+추론) | **10.10.10.128** | Ubuntu 24.04 (GPU) | FastAPI 8002/tcp |
+| ⑥ | Vision PC (학습+추론) | **10.10.10.120** | Ubuntu 24.04 (GPU) | FastAPI 8003/tcp |
 
 > 📌 **사내 LAN 대역 `10.10.10.0/24`** 일괄. 외부 노출 없음 (식약처 OpenAPI 호출만 메인서버에서 HTTPS 아웃바운드).
 > 📌 **추론 서버 포트 분리** — LLM 8002, Vision 8003. 향후 PC 분리 시에도 포트 그대로 유지.
@@ -122,8 +122,8 @@
 
 | 디바이스 | 흐름 |
 | --- | --- |
-| ⑥ Vision PC (10.10.10.128) | 1. 메인서버에 "request_id 사진 경로?" 질의 → 2. 메인서버가 MariaDB 조회 → 경로 응답 → 3. Vision PC 가 데이터 보관 PC 에서 직접 GET → 4. YOLO·OCR·OpenCV 추론 |
-| ⑤ LLM PC (10.10.10.120) | 사진 직접 접근 거의 없음. **텍스트 입력 추론** 중심 (Stage 0.5 의도 분류 / Onboarding RAG / 일반 안내). 필요 시 동일 패턴(메인서버 경유 경로 질의 → 직접 GET) 적용 가능 |
+| ⑥ Vision PC (10.10.10.120) | 1. 메인서버에 "request_id 사진 경로?" 질의 → 2. 메인서버가 MariaDB 조회 → 경로 응답 → 3. Vision PC 가 데이터 보관 PC 에서 직접 GET → 4. YOLO·OCR·OpenCV 추론 |
+| ⑤ LLM PC (10.10.10.128) | 사진 직접 접근 거의 없음. **텍스트 입력 추론** 중심 (Stage 0.5 의도 분류 / Onboarding RAG / 일반 안내). 필요 시 동일 패턴(메인서버 경유 경로 질의 → 직접 GET) 적용 가능 |
 
 ### 2.5 ⭐ 데이터 보관 PC 메타 (photo_storage)
 
@@ -149,7 +149,7 @@ photo_storage (
 
 > 사용자 확정: "학습 데이터셋은 학습 시 일괄 다운로드".
 
-학습 시점에 Vision PC (⑥, 10.10.10.128) 가 데이터 보관 PC (④, 10.10.10.122) 로부터 학습용 사진 일괄 수집:
+학습 시점에 Vision PC (⑥, 10.10.10.120) 가 데이터 보관 PC (④, 10.10.10.122) 로부터 학습용 사진 일괄 수집:
 
 | 단계 | 흐름 |
 | --- | --- |
@@ -171,7 +171,7 @@ photo_storage (
 | --- | --- |
 | 1. 폰 STT | 폰 내장 STT (Galaxy AI / `SpeechRecognizer`) → 텍스트 변환 |
 | 2. 텍스트 전송 | 폰 → 클라 PC (USB ADB) → 메인 서버 10.10.10.97 (`POST /v1/speech/utterance`) |
-| 3. LLM 추론 요청 | 메인 서버 → LLM PC 10.10.10.120 (텍스트 입력, FastAPI 8002/tcp) |
+| 3. LLM 추론 요청 | 메인 서버 → LLM PC 10.10.10.128 (텍스트 입력, FastAPI 8002/tcp) |
 | 4. LLM 응답 (분류 결과 또는 보정 텍스트) | LLM PC → 메인 서버 |
 | 5. 추출 구조화 데이터 저장 | 메인 서버 → MariaDB (예: `medication_intake_logs`, `user_medication_pool`) — **추출 결과만 보관** |
 | 6. 클라 응답 | 메인 서버 → 클라 PC → (필요 시) TTS 음성 안내 |
@@ -188,7 +188,7 @@ photo_storage (
 | --- | --- |
 | 1. 폰 STT | 폰 내장 STT → "타이레놀 등록할게" 텍스트 |
 | 2. 텍스트 전송 (round=1) | 폰 → 클라 PC → 메인 서버 10.10.10.97 (`POST /v1/pill/onboarding/normalize` body: `utterance_text`, `round=1`) |
-| 3. RAG 요청 | 메인 서버 → LLM PC 10.10.10.120 (약명 후보 추출 NER + 식약처 의약품 **ChromaDB 벡터 검색**) |
+| 3. RAG 요청 | 메인 서버 → LLM PC 10.10.10.128 (약명 후보 추출 NER + 식약처 의약품 **ChromaDB 벡터 검색**) |
 | 4. RAG 응답 | LLM PC → 메인 서버 (후보 N개 + hint) |
 | 5. state 분기 | 메인 서버: 후보 1건 → `RESOLVED` / 2~5건 → `NEED_DISAMBIGUATION` / 0건 → `NOT_FOUND` |
 | 6. TTS 안내 | 메인 서버 → 클라 PC (응답 `question.tts_text` 또는 `confirmation.tts_text` 또는 `tts_text` 포함) → **클라 자체 TTS 합성·재생** (어댑터, §2.9) |
@@ -208,7 +208,7 @@ photo_storage (
    ↓ POST /v1/pill/onboarding/normalize
 [③ 메인 서버 10.10.10.97]
    ↓ NER + RAG
-[⑤ LLM PC 10.10.10.120]  ← ChromaDB 벡터 검색 (식약처 낱알식별 + e약은요 임베딩)
+[⑤ LLM PC 10.10.10.128]  ← ChromaDB 벡터 검색 (식약처 낱알식별 + e약은요 임베딩)
    ↓ candidates[]
 [③ 메인 서버] state 결정
    ├─ RESOLVED      → confirmation.tts_text
@@ -359,7 +359,7 @@ ITtsProvider {
 | --- | --- | --- | --- |
 | v1.0 | 2026-05-07 | 팀 (3인) | 초안 — 사용자 제안 5대 + 폰 구조 정리 |
 | v2.0 | 2026-05-07 | 팀 (3인) | **§8 가명화·익명화 정책** 신규 / **§2.5 데이터 보관 PC 메타 (photo_storage)** 정의 / DB ERD v3 → v4 동시 갱신 / 단기 서명 토큰 흐름 명시 / 본 v1·v2 변경 표 갱신 |
-| v2.1 | 2026-05-07 | 팀 (3인) | **§1.2 IP·호스트 매트릭스** 신규(10.10.10.97 메인 / 10.10.10.122 데이터보관 / 10.10.10.120 LLM / 10.10.10.128 Vision) / **추론 PC 역할 재분배** — LLM(학습+추론 동거) + Vision(학습+추론 동거) 카테고리별 분리, 네트워크 분리 가능 설계 / **데이터 보관 PC = 사진 전용** 명시 (음성 원본 보관 X, 추출 구조화 데이터만 메인 MariaDB 보관 OK) / **§2.6 Vision 학습 일괄 다운로드 흐름** 신규 / **§2.7 음성 텍스트 추론 흐름** 신규 |
+| v2.1 | 2026-05-07 | 팀 (3인) | **§1.2 IP·호스트 매트릭스** 신규(10.10.10.97 메인 / 10.10.10.122 데이터보관 / 10.10.10.128 LLM / 10.10.10.120 Vision) / **추론 PC 역할 재분배** — LLM(학습+추론 동거) + Vision(학습+추론 동거) 카테고리별 분리, 네트워크 분리 가능 설계 / **데이터 보관 PC = 사진 전용** 명시 (음성 원본 보관 X, 추출 구조화 데이터만 메인 MariaDB 보관 OK) / **§2.6 Vision 학습 일괄 다운로드 흐름** 신규 / **§2.7 음성 텍스트 추론 흐름** 신규 |
 | v2.2 | 2026-05-07 | 팀 (3인) | **§2.8 Onboarding RAG round-trip 흐름** 신규 — 음성 등록 시 의료용어를 모르는 사용자를 위한 약명 정규화 (다회 round-trip 허용 + max_rounds·max_input_tokens·rate_limit 남용 방어). PillApi v0.3 `POST /v1/pill/onboarding/normalize` 와 1:1 매핑 / **§2.9 TTS 어댑터 정책** 신규 — 클라 자체 TTS 우선 (Qt6 QTextToSpeech + Windows SAPI), 메인 서버 TTS fallback 어댑터 (`ITtsProvider`) / §2.1 음성 안내 행 명확화 |
 
 ---

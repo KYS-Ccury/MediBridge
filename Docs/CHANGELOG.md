@@ -11,6 +11,31 @@
 
 ## [Unreleased]
 
+### Changed (2026-05-15 — LLM ↔ Vision PC IP swap)
+
+회의 후속 결정에 따라 두 추론 PC 의 IP 를 스왑.
+
+| 역할 | 기존 IP | 신규 IP | 포트 |
+|---|---|---|---|
+| **LLM 학습 + 추론** PC | `10.10.10.120` | **`10.10.10.128`** | `:8002` |
+| **Vision 학습 + 추론** PC | `10.10.10.128` | **`10.10.10.120`** | `:8003` |
+
+> 학습 + 추론 동거 정책은 그대로 유지 (한 PC 안에서 둘 다 수행). 네트워크 분리 가능 설계 유지.
+
+**영향 받은 파일 (20개)**:
+- 코드: `MainServer/Config.h` · `MainServer/config.sample.json` · `MainServer/Services/Inference/InferenceClient.h` · `MainServer/Services/Inference/InferenceClientCommon.h`
+- 문서: `README.md` · `CHANGELOG.md` · `system_prompt.md` · `기획서_ver3.md` · `시스템 흐름 정리본_ver3.md` · `시스템_연결구조_ver2.md` · `아이템_ver3.md` · `Meeting_2026-05-15.md` · `LLM_Model_Candidates.md`
+- API: `Api/ApiOverview.md` · `Api/PillApi.md` · `Api/SpeechApi.md`
+- Install: `Install/InferenceServerInstall.md` · `Install/InstallIndex.md` · `Install/MainServerInstall.md`
+- 도해: `Architecture/build_pptx.js`
+
+**필요 후속**:
+- 메인서버 재빌드 (`Config.cpp.o` 안 하드코딩 값) — `make -j` + `medibridge-up.sh`
+- 환경변수 `MEDIBRIDGE_INFERENCE_LLM_BASE` · `MEDIBRIDGE_INFERENCE_VISION_BASE` 가 export 돼 있다면 새 IP 로 갱신
+- Architecture PPTX 도해 빌드 (`node Docs/Architecture/build_pptx.js`)
+
+---
+
 ### Added · Fixed · Changed (2026-05-15 — 클라이언트 UX·통합 검증 + LLM 모델 선정 진입)
 
 #### 클라이언트 — 사용자 피드백 5건 반영 (Smoke Test)
@@ -146,7 +171,7 @@
 - `MainServer/Services/Auth/JwtIssuer.cpp` 실 구현 (HS256 표준 JWT / OpenSSL HMAC)
 - `MainServer/Services/Auth/Authenticator.cpp` + `UserManager.cpp` 실 DB CRUD
 - `MainServer/Services/Inference/InferenceClientCommon.cpp` Drogon HttpClient 실 호출 (post_json/post_file)
-- `MainServer/Services/Inference/InferenceClient.cpp` LLM/Vision 카테고리별 Common 분리 (10.10.10.120 / 10.10.10.128)
+- `MainServer/Services/Inference/InferenceClient.cpp` LLM/Vision 카테고리별 Common 분리 (10.10.10.128 / 10.10.10.120)
 - `MainServer/Config` 에 `MEDIBRIDGE_INFERENCE_LLM_BASE` / `..._VISION_BASE` 환경변수 + 접근자
 - `Docs/시스템 흐름 정리본_ver3.md` — 단일 정본화 통합 (시스템_연결구조 v2.2 + DB ERD v4 + Pill v0.3 + TestMode + Auth + 데이터보관 PC + ChromaDB)
 - `Docs/Old/시스템 흐름 정리본_ver2_2026-05-07.md` (이동)
@@ -210,7 +235,7 @@
 ## [2026-05-07] — Onboarding RAG round-trip + TTS 어댑터 + ChromaDB 채택 (A+B+C)
 
 ### 기술 선정
-- **벡터 DB: ChromaDB** (사용자 확정) — Onboarding RAG 약명 정규화 + 일반 안내 보조에 사용. LLM PC `10.10.10.120` 에 동거(`pip install chromadb`). 운영 단순성 + Python 친화 + 단일 PC 적합 (FAISS·Qdrant·Pinecone 대비 경량).
+- **벡터 DB: ChromaDB** (사용자 확정) — Onboarding RAG 약명 정규화 + 일반 안내 보조에 사용. LLM PC `10.10.10.128` 에 동거(`pip install chromadb`). 운영 단순성 + Python 친화 + 단일 PC 적합 (FAISS·Qdrant·Pinecone 대비 경량).
 - 영향 문서: `PillApi.md` §3 백엔드 처리 흐름, `시스템_연결구조 §2.8`, `Install/InferenceServerInstall.md` 항목 11, `아이템_ver3.md §6.3`.
 
 ### Docs (사용자 확정 사항 반영)
@@ -246,7 +271,7 @@
 
 ### Docs (사용자 확정 사항 반영)
 - **Changed** — `Docs/시스템_연결구조_ver2.md` v2.0 → **v2.1** (in-place 갱신)
-    - **§1.2 IP·호스트 매트릭스** 신규 — 메인 10.10.10.97 / 데이터보관 10.10.10.122 / LLM 10.10.10.120 / Vision 10.10.10.128 / 클라 로컬
+    - **§1.2 IP·호스트 매트릭스** 신규 — 메인 10.10.10.97 / 데이터보관 10.10.10.122 / LLM 10.10.10.128 / Vision 10.10.10.120 / 클라 로컬
     - **§1.1 디바이스 표 재분배** — ⑤ 추론 PC + ⑥ 학습 서버 → ⑤ LLM PC (학습+추론 동거) + ⑥ Vision PC (학습+추론 동거). 카테고리별 분리, 네트워크 분리 가능 설계
     - **데이터 보관 PC = 사진 전용** 명시 (음성 원본 폰 외부 비송신 → DB·DataStorage 모두 보관 X. 추출 구조화 데이터만 메인 MariaDB 보관 OK)
     - **§2.6 Vision 학습 일괄 다운로드 흐름** 신규

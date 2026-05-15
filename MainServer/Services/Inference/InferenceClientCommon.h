@@ -1,7 +1,7 @@
 // =====================================================
 // InferenceClientCommon — 추론 서버 호출 공통 (HttpClient)
 // =====================================================
-// LLM PC (10.10.10.120) / Vision PC (10.10.10.128) 처럼 카테고리별로
+// LLM PC (10.10.10.128) / Vision PC (10.10.10.120) 처럼 카테고리별로
 // 별도 베이스 URL 을 사용하므로, 본 객체를 카테고리당 1개 생성한다.
 // 4개 카테고리 클라이언트(Vision/Intent/Onboarding/Summary)가 각자
 // 적절한 Common 을 공유한다.
@@ -21,7 +21,7 @@ class InferenceClientCommon
 public:
     using Callback = std::function<void(const Json::Value& response, int status_code)>;
 
-    /// base_url: "http://10.10.10.120:8002" 등. timeout_ms.
+    /// base_url: "http://10.10.10.128:8002" 등. timeout_ms.
     explicit InferenceClientCommon(const std::string& base_url,
                                    int timeout_ms);
 

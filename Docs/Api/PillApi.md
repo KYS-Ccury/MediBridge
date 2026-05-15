@@ -151,7 +151,7 @@
 **메인 → Vision PC 호출 schema** (다른 팀원 측 FastAPI 작성 기준):
 
 ```http
-POST http://10.10.10.128:8003/vision/detect_remote
+POST http://10.10.10.120:8003/vision/detect_remote
 Content-Type: application/json
 
 {
@@ -497,7 +497,7 @@ TestMode (`MEDIBRIDGE_TEST_MODE=true`) 에서는 Vision 호출 우회 — `pill_
 [메인서버] PillService::onboarding_normalize()
    ↓ JWT 검증 + max_rounds·max_input_tokens·rate_limit 체크
    ↓
-[메인서버 → LLM PC 10.10.10.120] /v1/llm/onboarding/extract_and_search
+[메인서버 → LLM PC 10.10.10.128] /v1/llm/onboarding/extract_and_search
    ↓ ① 약명 후보 추출 (NER on utterance_text)
    ↓ ② 식약처 의약품 정보 RAG 검색 (**ChromaDB 벡터 DB** over 낱알식별 + e약은요)
    ↓ ③ 후보 정렬 + hint 생성

@@ -8,7 +8,7 @@
 | **이전 버전** | v2.0 → `Docs/Old/시스템 흐름 정리본_ver2_2026-05-07.md` / v1.0 → `Docs/Old/시스템 흐름 정리본_ver1_2026-05-06.md` |
 
 > ⭐ **v3.0 변경 핵심** (산재 문서 통합 → 본 문서를 단일 정본화):
-> 1. **§2.1 PC 구성 갱신** — 4대 → **5대 + 폰** (메인 10.10.10.97 / 데이터보관 10.10.10.122 / LLM 10.10.10.120 / Vision 10.10.10.128 / 클라 로컬). [시스템_연결구조 v2.2](시스템_연결구조_ver2.md) 흡수
+> 1. **§2.1 PC 구성 갱신** — 4대 → **5대 + 폰** (메인 10.10.10.97 / 데이터보관 10.10.10.122 / LLM 10.10.10.128 / Vision 10.10.10.120 / 클라 로컬). [시스템_연결구조 v2.2](시스템_연결구조_ver2.md) 흡수
 > 2. **추론 카테고리별 분리** — LLM (학습+추론 동거) / Vision (학습+추론 동거). 네트워크 분리 가능 설계
 > 3. **§10 가명화 정책** 신규 — `pseudonym_map` 단일 끊기 매핑 ([DB ERD v4](DB_ERD_ver4.md))
 > 4. **§11 Onboarding RAG round-trip** 신규 — 음성 등록 약명 정규화 다회 분기 질문 ([PillApi v0.3 §3](Api/PillApi.md))
@@ -177,8 +177,8 @@
 | ② | 클라이언트 PC | **로컬** | Windows 10/11 | Qt6 + QML GUI |
 | ③ | 메인 서버 PC | **10.10.10.97:8001** | Ubuntu 24.04 | Drogon C++ + MariaDB |
 | ④ | 데이터 보관 PC | **10.10.10.122** | Ubuntu 24.04 | 사진 전용 저장소 (음성 원본 X) |
-| ⑤ | LLM 학습+추론 PC | **10.10.10.120:8002** | Ubuntu 24.04 (GPU) | Stage 0.5 / Onboarding RAG / 일반 안내. ChromaDB 동거 |
-| ⑥ | Vision 학습+추론 PC | **10.10.10.128:8003** | Ubuntu 24.04 (GPU) | YOLO·PaddleOCR·OpenCV |
+| ⑤ | LLM 학습+추론 PC | **10.10.10.128:8002** | Ubuntu 24.04 (GPU) | Stage 0.5 / Onboarding RAG / 일반 안내. ChromaDB 동거 |
+| ⑥ | Vision 학습+추론 PC | **10.10.10.120:8003** | Ubuntu 24.04 (GPU) | YOLO·PaddleOCR·OpenCV |
 
 > 📌 사내 LAN `10.10.10.0/24`. 외부 노출 없음 (식약처 OpenAPI 만 메인서버에서 HTTPS 아웃바운드).
 > 📌 ⑤·⑥ 은 학습+추론 동거 — 여유 PC 부족으로 통합. 포트·네트워크 정책상 분리 가능 설계로 향후 PC 증설 즉시 분리.
@@ -235,7 +235,7 @@
               │
               │ ② TCP/IP (REST API on HTTP)
               ▼
-┌────── ③ LLM PC 10.10.10.120:8002 ─┐  ┌────── ④ Vision PC 10.10.10.128:8003 ┐
+┌────── ③ LLM PC 10.10.10.128:8002 ─┐  ┌────── ④ Vision PC 10.10.10.120:8003 ┐
 │  학습 + 추론 (동거)               │  │  학습 + 추론 (동거)                  │
 │  ├ Stage 0.5 의도 분류            │  │  ├ YOLO26 객체 검출                  │
 │  ├ Onboarding RAG (ChromaDB)      │  │  ├ PaddleOCR 각인 인식               │
@@ -268,8 +268,8 @@
 | --- | --- | --- | --- |
 | 1 | 폰(S24) ↔ 클라 PC | **USB (`adb reverse`)** 또는 WiFi | 카메라·마이크·온디바이스 STT 텍스트만 송신 (음성 바이너리 X) |
 | 2 | 클라 PC ↔ 메인 서버 (10.10.10.97:8001) | **REST on HTTP** + 이미지 multipart | API 명세 [Docs/Api/](Api/) v0.3 |
-| 3 | 메인 서버 ↔ LLM PC (10.10.10.120:8002) | **REST on HTTP** | Stage 0.5 / Onboarding RAG / Summary |
-| 4 | 메인 서버 ↔ Vision PC (10.10.10.128:8003) | **REST on HTTP** | YOLO·OCR·OpenCV |
+| 3 | 메인 서버 ↔ LLM PC (10.10.10.128:8002) | **REST on HTTP** | Stage 0.5 / Onboarding RAG / Summary |
+| 4 | 메인 서버 ↔ Vision PC (10.10.10.120:8003) | **REST on HTTP** | YOLO·OCR·OpenCV |
 | 5 | 메인 서버 ↔ 데이터 보관 PC (10.10.10.122) | **컨트롤 평면**: 메인이 경로/단기 토큰 발급 / **데이터 평면**: 클라/추론 PC 가 직접 PUT/GET | 사진 전용 |
 | 6 | 메인 서버 ↔ 식약처 OpenAPI | **HTTPS** | e약은요 lazy 캐싱 시에만 (낱알식별·DUR 은 CSV/스마트싱크 일괄 적재) |
 | 7 | Vision PC 학습 시 ↔ 데이터 보관 PC | 학습 데이터 일괄 PULL (SCP 또는 HTTP) | 학습+추론 동거이므로 별도 모델 SCP 단계 생략. 분리 시 부활 |
@@ -874,7 +874,7 @@ UPDATE pseudonym_map
 | 단계 | 흐름 |
 | --- | --- |
 | 1 | 폰 STT → 클라 PC → 메인 서버 `POST /v1/pill/onboarding/normalize` |
-| 2 | 메인 서버 → LLM PC 10.10.10.120 (NER + ChromaDB 벡터 검색) |
+| 2 | 메인 서버 → LLM PC 10.10.10.128 (NER + ChromaDB 벡터 검색) |
 | 3 | state 분기: `RESOLVED` (1건) / `NEED_DISAMBIGUATION` (2~5건) / `NOT_FOUND` |
 | 4 | TTS 안내 (§14) → 사용자 응답 → round=k+1 재호출 |
 | 5 | RESOLVED + 사용자 OK → `POST /v1/pill/pool` |
@@ -1005,7 +1005,7 @@ Fallback 발동: `is_available()==false`, "고품질 음성" 사용자 설정, �
 
 ## 18. ChromaDB (RAG 벡터 DB) ⭐ v3.0 채택
 
-LLM PC (10.10.10.120) 동거. `pip install chromadb`. Onboarding 약명 정규화 + 비의료 일반 안내에 사용. 운영 단순성·Python 친화·단일 PC 적합.
+LLM PC (10.10.10.128) 동거. `pip install chromadb`. Onboarding 약명 정규화 + 비의료 일반 안내에 사용. 운영 단순성·Python 친화·단일 PC 적합.
 
 ---
 

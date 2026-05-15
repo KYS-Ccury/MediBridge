@@ -17,7 +17,7 @@
 > - HMAC 토큰 시크릿 분리 — `MEDIBRIDGE_JWT_SECRET` ≠ `MEDIBRIDGE_STORAGE_SECRET`
 >
 > ⭐ **v0.3 변경 핵심** (시스템_연결구조 v2.1 반영):
-> - **§2 호스트 표 IP 확정** — 메인 10.10.10.97 / 데이터 보관 10.10.10.122 / **LLM 추론 10.10.10.120 / Vision 추론 10.10.10.128** (추론 서버 카테고리별 2대 분리)
+> - **§2 호스트 표 IP 확정** — 메인 10.10.10.97 / 데이터 보관 10.10.10.122 / **LLM 추론 10.10.10.128 / Vision 추론 10.10.10.120** (추론 서버 카테고리별 2대 분리)
 > - **§2 베이스 URL 분기** — `INFERENCE_LLM_BASE` / `INFERENCE_VISION_BASE` 명시 (학습+추론 동거, 네트워크 분리 가능 설계)
 > - 음성 텍스트 추론은 LLM 서버, 이미지 식별 추론은 Vision 서버 — 라우팅 책임은 메인 서버
 >
@@ -49,8 +49,8 @@
 | Client (PhoneAdapter) | Windows 10/11 | `localhost` (폰 → adb reverse) | 8000 | `http://localhost:8000` |
 | **MainServer** | Ubuntu 24.04 | **10.10.10.97** | 8001 | `http://10.10.10.97:8001/v1` |
 | **DataStoragePC** ⭐ | Ubuntu 24.04 | **10.10.10.122** | **8004** | Drogon C++ 미니 서버. `PUT/GET /storage/photos/{anon}/{photo_id}.{ext}` + HMAC 토큰 검증 |
-| **InferenceServer (LLM)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.120** | 8002 | `http://10.10.10.120:8002/v1` (Stage 0.5 의도 분류 / Onboarding RAG / 일반 안내) |
-| **InferenceServer (Vision)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.128** | 8003 | `http://10.10.10.128:8003/v1` (YOLO·PaddleOCR·OpenCV) |
+| **InferenceServer (LLM)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.128** | 8002 | `http://10.10.10.128:8002/v1` (Stage 0.5 의도 분류 / Onboarding RAG / 일반 안내) |
+| **InferenceServer (Vision)** ⭐ | Ubuntu 24.04 (GPU) | **10.10.10.120** | 8003 | `http://10.10.10.120:8003/v1` (YOLO·PaddleOCR·OpenCV) |
 
 > 📌 **추론 서버 카테고리별 2대 분리** — 학습+추론 동거, 네트워크 분리 가능 설계. 향후 PC 증설 시 학습/추론 PC 분리해도 포트·베이스 URL 그대로 유지.
 > 📌 **추론 라우팅 책임은 메인 서버** — 클라는 메인 서버 단일 엔드포인트만 호출. 메인 서버가 텍스트 입력은 `INFERENCE_LLM_BASE`, 이미지 입력은 `INFERENCE_VISION_BASE` 로 분기 호출.
@@ -194,4 +194,4 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp...
 | --- | --- | --- | --- |
 | v0.1 | 2026-05-06 | 팀 (3인) | 초안 — 호스트·포트, 공통 헤더, 표준 응답·에러, 상태 코드, JWT, 페이지네이션, 표현 톤, Schemas 매핑 |
 | v0.2 | 2026-05-07 | 팀 (3인) | 목업 분석 반영 — PillApi 확장(`efficacy_text`/`usage_text`/`user_category` 추가), 신규 `POST /v1/pill/identify/narrow` (단계별 좁히기), DB ERD v3 매핑. 다른 명세는 변경 없음 (호환 변경) |
-| v0.3 | 2026-05-07 | 팀 (3인) | 시스템_연결구조 v2.1 반영 — §2 호스트 표 IP 확정(메인 10.10.10.97 / 데이터보관 10.10.10.122 / **LLM 10.10.10.120 / Vision 10.10.10.128**), 추론 서버 카테고리별 2대 분리, 학습+추론 동거(네트워크 분리 가능 설계). + **PillApi v0.3** 인덱스 갱신 (신규 `POST /v1/pill/onboarding/normalize` Onboarding RAG round-trip). 엔드포인트는 호환 변경 (추가만, 기존 X) |
+| v0.3 | 2026-05-07 | 팀 (3인) | 시스템_연결구조 v2.1 반영 — §2 호스트 표 IP 확정(메인 10.10.10.97 / 데이터보관 10.10.10.122 / **LLM 10.10.10.128 / Vision 10.10.10.120**), 추론 서버 카테고리별 2대 분리, 학습+추론 동거(네트워크 분리 가능 설계). + **PillApi v0.3** 인덱스 갱신 (신규 `POST /v1/pill/onboarding/normalize` Onboarding RAG round-trip). 엔드포인트는 호환 변경 (추가만, 기존 X) |
