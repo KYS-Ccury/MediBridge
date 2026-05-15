@@ -396,4 +396,74 @@ void PillController::reset_pool()
         });
 }
 
+// =====================================================
+// 약 이름 검색 — POST /v1/pill/onboarding/normalize
+// =====================================================
+// 응답 schema (round=1):
+//   { state: "RESOLVED" | "NEED_DISAMBIGUATION" | "NOT_FOUND",
+//     resolved?: { item_code, item_name, ... },
+//     candidates?: [{ item_code, item_name, classification_name, ... }] }
+// 양쪽 모두 동일한 QVariantList(item_code, drug_name) 형식으로 정규화 → QML.
+// =====================================================
+void PillController::search_drug_name(const QString& query)
+{
+    const QString q = query.trimmed();
+    if (q.isEmpty()) {
+        emit drug_search_completed({});
+        return;
+    }
+
+    set_loading(true);
+    api_client_->pill().search_drug_name(q,
+        [this](const QByteArray& response, int status_code) {
+            set_loading(false);
+            if (status_code != 200) {
+                QString code = QStringLiteral("SEARCH_FAILED_") + QString::number(status_code);
+                const auto err_doc = QJsonDocument::fromJson(response);
+                if (err_doc.isObject() && err_doc.object().contains("error")) {
+                    code = err_doc.object().value("error").toObject()
+                                  .value("code").toString(code);
+                }
+                qWarning().nospace() << "[PillController] drug 이름 검색 실패 status="
+                                     << status_code << " code=" << code;
+                emit drug_search_failed(code);
+                return;
+            }
+            const auto doc = QJsonDocument::fromJson(response);
+            if (!doc.isObject()) {
+                emit drug_search_failed("INVALID_JSON");
+                return;
+            }
+            const auto root = doc.object();
+            const QString state = root.value("state").toString();
+
+            QVariantList results;
+            if (state == "RESOLVED") {
+                const auto rv = root.value("resolved").toObject();
+                QVariantMap m;
+                m["item_code"] = rv.value("item_code").toString();
+                m["drug_name"] = rv.value("item_name").toString();
+                m["classification_name"] = rv.value("classification_name").toString();
+                m["manufacturer"] = rv.value("manufacturer").toString();
+                results.push_back(m);
+            } else if (state == "NEED_DISAMBIGUATION") {
+                const auto arr = root.value("candidates").toArray();
+                for (const auto& v : arr) {
+                    const auto co = v.toObject();
+                    QVariantMap m;
+                    m["item_code"] = co.value("item_code").toString();
+                    m["drug_name"] = co.value("item_name").toString();
+                    m["classification_name"] = co.value("classification_name").toString();
+                    m["manufacturer"] = co.value("manufacturer").toString();
+                    results.push_back(m);
+                }
+            }
+            // NOT_FOUND → 빈 배열
+
+            qInfo().nospace() << "[PillController] drug 이름 검색 OK — state=" << state
+                              << " results=" << results.size();
+            emit drug_search_completed(results);
+        });
+}
+
 } // namespace medibridge::controllers

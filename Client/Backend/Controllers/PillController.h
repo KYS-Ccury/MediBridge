@@ -12,6 +12,7 @@
 #include <QObject>
 #include <QString>
 #include <QByteArray>
+#include <QVariantList>
 
 #include "PillCandidateListModel.h"
 #include "DurDetailListModel.h"
@@ -72,6 +73,10 @@ public:
     Q_INVOKABLE void remove_from_pool(int pool_id);
     Q_INVOKABLE void reset_pool();   // X-Confirm-Reset 자동 첨부
 
+    /// 약 이름으로 검색 — 결과는 drug_search_completed 시그널로 전달
+    ///  results: [{ "item_code": "999800001", "drug_name": "타이레놀정500mg" }, ...]
+    Q_INVOKABLE void search_drug_name(const QString& query);
+
 signals:
     void is_loading_changed();
     void last_error_changed();
@@ -85,6 +90,10 @@ signals:
     void pool_loaded();
     void pool_load_failed(const QString& error_code);
     void pool_changed();
+
+    /// 약 이름 검색 결과 — QVariantList(QVariantMap)
+    void drug_search_completed(const QVariantList& results);
+    void drug_search_failed(const QString& error_code);
 
 private slots:
     /// PhoneCaptureService::capture_succeeded 수신

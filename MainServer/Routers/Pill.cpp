@@ -558,10 +558,9 @@ void Pill::handle_onboarding_normalize(const drogon::HttpRequestPtr& req,
         return;
     }
 
-    if (!Config::instance().test_mode()) {
-        callback(error_response(drogon::k501NotImplemented, "NOT_IMPLEMENTED", "운영 모드 onboarding 미구현."));
-        return;
-    }
+    // 2026-05-15: Production 가드 제거 — drug_name LIKE 매칭은 단순 DB 쿼리로
+    // 외부 의존성 없음. TestMode 와 Production 양쪽 동일 동작.
+    // (LLM/RAG 정교화는 InferenceServer 의 OnboardingNormalizer 로 확장 예정)
 
     auto db = Connection::instance().client();
     if (!db) {

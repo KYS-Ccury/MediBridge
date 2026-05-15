@@ -61,4 +61,16 @@ void PillApiClient::reset_pool(JsonCallback callback)
                           {}, "application/json", std::move(callback), headers);
 }
 
+void PillApiClient::search_drug_name(const QString& utterance_text, JsonCallback callback)
+{
+    // 사용자가 입력한 약 이름을 utterance_text 로 전달 → 서버 LIKE 매칭
+    QJsonObject body{
+        {"utterance_text", utterance_text},
+        {"round", 1}
+    };
+    common_->send_request("POST", "/v1/pill/onboarding/normalize",
+                          QJsonDocument(body).toJson(QJsonDocument::Compact),
+                          "application/json", std::move(callback));
+}
+
 } // namespace medibridge::network

@@ -37,6 +37,10 @@ public:
     /// X-Confirm-Reset 헤더 자동 첨부 (안전 가드)
     void reset_pool(JsonCallback callback);
 
+    /// POST /v1/pill/onboarding/normalize — drug_name LIKE 검색
+    /// round=1 첫 검색만 노출 (분기 확정 흐름은 별도 호출자 책임)
+    void search_drug_name(const QString& utterance_text, JsonCallback callback);
+
 private:
     std::shared_ptr<ApiClientCommon> common_;
 };

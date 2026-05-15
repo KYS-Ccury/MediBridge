@@ -285,9 +285,64 @@ done
 
 ---
 
+## 8.1 추가 사용자 피드백 반영 (2026-05-15 PM)
+
+세 가지 후속 질문에 대한 정직한 상태 및 조치:
+
+### F-01. DUR 데이터 적재 상태 (병용금기/주의/효능군중복)
+
+| 항목 | 현 상태 | 비고 |
+|---|---|---|
+| `dev_seed.sql` DUR 행수 | **2건** (효능군중복 1 + 병용주의 1) | 시연용 시드 — `INSERT INTO dur_interaction_cache` |
+| `Scripts/sample_pdma_dur.csv` | **2건** (병용금기) | `import_pdma.py` 로 import 시 추가 |
+| **최대 합산** | **4건** | 두 소스 모두 로드 시 |
+| **식약처 정식 CSV** | ❌ **미적재** | 별도 키 발급·다운로드 필요 (`OpenAPI 식약처 DUR.정보`) |
+| 적재 도구 | `MainServer/Scripts/import_pdma.py` | CSV bulk import 가능 — 키 입력 없이 동작 |
+
+**시연 의미**: 시드 두 쌍의 약 조합(아세트아미노펜+아세트아미노펜=효능군중복, 이부프로펜+아스피린=병용주의)을 함께 등록하면 `dur_check.result=risk_found`+상세 텍스트가 응답에 포함되어 **DUR 흐름의 정상 동작**을 시각적으로 보여줄 수 있음. 다만 **전체 식약처 DUR 데이터셋의 커버리지는 4건 한정**이므로, 임의 약 조합에서 위험을 자동 검출하는 수준은 아님.
+
+**향후**: 식약처 OpenAPI 키 발급(무료, 1일) 후 `import_pdma.py` 로 수만 건 일괄 적재 → 운영 모드. 본 시연 범위에는 미포함.
+
+### F-02. 다중 알약 카드별 등록 흐름
+
+**문제 (사용자 지적)**: "여러 알약을 같이 찍어도 한 알약밖에 대응이 안 되는 것 같다."
+
+**조치 (이번 세션)**:
+- `Client/Frontend/Pages/IdentifyResultPage.qml` — 각 후보 카드에 [💊 이 약 기록·등록] 버튼 추가
+- 후보 ≥ 2 일 때 안내 배너 표시: "여러 약이 검출됐어요. 각 후보의 […] 버튼으로 하나씩 기록할 수 있어요."
+- `record_dialog` 에 `preset_item_code` / `preset_drug_name` 속성 추가 → 카드 클릭 시 그 약으로 다이얼로그 자동 시작
+- 다이얼로그 닫고 다른 카드 다시 클릭 → 다른 약 기록 가능 (반복 가능)
+
+**상태**: ✅ UI 작업 완료. 메인서버 측은 단일 `/v1/pill/identify` 응답이 이미 `candidates[]` 배열을 N 개 반환하므로 백엔드 변경 불필요.
+
+### F-03. 약 이름 텍스트로 등록 (코드 모를 때)
+
+**문제 (사용자 지적)**: "사용자가 이름을 알 경우 텍스트를 수정해 등록할 수도 있잖아?"
+
+**조치 (이번 세션)**:
+- `MainServer/Routers/Pill.cpp` — `POST /v1/pill/onboarding/normalize` 의 Production 가드 제거 → TestMode·Production 동일 동작 (단순 `drug_name LIKE`)
+- `Client/MainServerClient/PillApiClient.{h,cpp}` — `search_drug_name(text, cb)` 추가
+- `Client/Backend/Controllers/PillController.{h,cpp}` — `Q_INVOKABLE search_drug_name(query)` + `drug_search_completed(QVariantList)` 시그널
+- `Client/Frontend/Pages/PillPoolPage.qml` — [⌨ 직접 입력] 다이얼로그를 두 모드로 확장:
+  - 🔍 이름으로 검색 — 입력 후 검색 → 후보 카드 리스트 → 클릭 선택 → 등록
+  - ⌨ 코드 직접 입력 — 기존 동작 유지 (코드를 아는 경우)
+
+**검증 (서버 단)**:
+```
+POST /v1/pill/onboarding/normalize
+{"utterance_text":"타이레놀","round":1}
+→ state: NEED_DISAMBIGUATION, candidates: 4건 (타이레놀정500mg 변형)
+```
+
+**상태**: ✅ 클·서버 모두 작업 완료. 빌드 + GUI 검증 진행.
+
+---
+
 ## 9. 결론
 
 **Production 모드 자동 검증 21건 중 20건 통과 + 1건 부분 통과 (95.2%)**. 클라이언트 GUI 8건 휴먼 검증은 사용자가 위 절차서 따라 실행 가능.
+
+**+ 사용자 후속 피드백 3건 반영 완료** (DUR 데이터 상태 명시 / 다중 알약 카드별 등록 / 약 이름 텍스트 검색 등록).
 
 기획서 원 목적 (TestMode 가 아닌 실제 추론) 으로 전 시스템 동작 확인됨:
 - ✅ 메인서버 ↔ 보관 PC ↔ Vision PC 사진 흐름 (intent → PUT → commit → identify)

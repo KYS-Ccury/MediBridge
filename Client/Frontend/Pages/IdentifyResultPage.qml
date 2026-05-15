@@ -153,7 +153,7 @@ Page {
                                 wrapMode: Text.WordWrap
                                 Layout.fillWidth: true
                             }
-                            // 식별 미확정 시 약 풀 선택 안내 버튼
+                            // 식별 미확정 시 — 약 풀에서 선택 안내 버튼
                             AppButton {
                                 visible: name_unknown
                                 text: qsTr("💊 내 약 풀에서 선택")
@@ -161,6 +161,22 @@ Page {
                                 Layout.preferredWidth: 200
                                 onClicked: {
                                     record_dialog.preset_source = "pool"
+                                    record_dialog.preset_item_code = ""
+                                    record_dialog.preset_drug_name = ""
+                                    record_dialog.open()
+                                }
+                            }
+                            // 식별 성공 시 — 이 후보로 바로 등록·기록
+                            AppButton {
+                                visible: !name_unknown
+                                text: qsTr("💊 이 약 기록·등록")
+                                Layout.preferredHeight: 30
+                                Layout.preferredWidth: 200
+                                onClicked: {
+                                    // 후보 카드 클릭 → record_dialog 가 이 약으로 자동 시작
+                                    record_dialog.preset_source = "candidate"
+                                    record_dialog.preset_item_code = model.item_code
+                                    record_dialog.preset_drug_name = model.drug_name
                                     record_dialog.open()
                                 }
                             }
@@ -186,6 +202,25 @@ Page {
                             }
                         }
                     }
+                }
+            }
+
+            // 다중 알약 안내 (후보 ≥ 2 시 표시)
+            Rectangle {
+                visible: candidates_list.count >= 2
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                radius: 6
+                color: "#E3F2FD"
+                border.color: "#90CAF9"
+                Label {
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    text: qsTr("ℹ️ 여러 약이 검출됐어요. 각 후보의 [💊 이 약 기록·등록] 버튼으로 하나씩 기록할 수 있어요.")
+                    font.pixelSize: 12
+                    color: "#1565C0"
+                    wrapMode: Text.WordWrap
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
 
@@ -272,9 +307,11 @@ Page {
         property string sel_item_code: ""
         property string sel_drug_name: ""
         property bool   in_pool: false
-        // 다이얼로그 오픈 시 어느 소스부터 시작할지: "candidate" / "pool" / "manual"
-        // "💊 내 약 풀에서 선택" 버튼 클릭 시 "pool" 로 지정.
+        // 다이얼로그 오픈 시 시작 소스: "candidate" / "pool" / "manual"
         property string preset_source: "candidate"
+        // 특정 후보 강제 선택 — 비어있으면 식별 첫 후보 사용
+        property string preset_item_code: ""
+        property string preset_drug_name: ""
 
         // 입력 코드 → 내 약 풀에 있는지 검사
         function check_in_pool(code) {
@@ -296,13 +333,28 @@ Page {
         onOpened: {
             // 약 풀 최신화 (다른 페이지에서 추가됐을 수 있음)
             pill_controller.load_pool(false)
-            // 기본값: 식별 첫 후보
-            if (candidates_list.count > 0) {
+
+            // preset_item_code 가 지정된 경우(특정 후보 카드 클릭) → 그 약 우선
+            //  - 다중 알약 식별 결과에서 카드별 등록 시 사용
+            if (preset_item_code.length > 0) {
+                set_selection(preset_item_code, preset_drug_name)
+                // 후보 ComboBox 도 동일 인덱스로 맞춤
+                var m = pill_controller.candidates
+                for (var i = 0; i < m.rowCount(); i++) {
+                    var ic = m.data(m.index(i, 0), Qt.UserRole + 1)
+                    if (ic === preset_item_code) {
+                        candidate_combo.currentIndex = i
+                        break
+                    }
+                }
+            } else if (candidates_list.count > 0) {
+                // 기본값: 식별 첫 후보
                 var c = pill_controller.candidates.data(
                     pill_controller.candidates.index(0, 0), Qt.UserRole + 1)
                 var n = pill_controller.candidates.data(
                     pill_controller.candidates.index(0, 0), Qt.UserRole + 2)
                 set_selection(c, n)
+                candidate_combo.currentIndex = 0
             } else {
                 set_selection("", "")
             }
@@ -314,7 +366,10 @@ Page {
             } else {
                 source_candidate.checked = true
             }
-            preset_source = "candidate"   // 다음 호출 위해 리셋
+            // 다음 호출을 위해 모두 리셋
+            preset_source = "candidate"
+            preset_item_code = ""
+            preset_drug_name = ""
             manual_code_input.text = ""
             qty_input.value = 1
             memo_input.text = ""
@@ -356,6 +411,7 @@ Page {
 
             // ----- 2-a) 식별 결과 ComboBox -----
             ComboBox {
+                id: candidate_combo
                 visible: source_candidate.checked
                 Layout.fillWidth: true
                 model: pill_controller.candidates
