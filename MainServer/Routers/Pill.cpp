@@ -224,32 +224,122 @@ void Pill::handle_identify(const drogon::HttpRequestPtr& req,
                     return;
                 }
 
-                // Vision PC 응답 schema (계약):
-                //   {
-                //     "candidates": [
-                //       {"item_code","drug_name","confidence","match_keys":[…]}, ...
-                //     ],
-                //     "confidence_tier": "HIGH" | "MEDIUM" | "LOW"
-                //   }
+                // Vision PC /detect_remote 실제 응답 schema:
+                //   { "candidates": [ {
+                //       "crop_id","bbox","detection_confidence",
+                //       "engraving_text","engraving_confidence",
+                //       "color_label","shape_label","size_mm",
+                //       "match_keys":[ "각인:820","색:검정","모양:타원형","크기:22.65mm" ],
+                //       "crop_jpeg_b64":"..." (선택)
+                //     }, ... ], "confidence_tier": "..." }
+                //
+                // ⚠ 2026-05-15 핵심 수정: Vision 은 item_code/drug_name 을
+                //   주지 않는다(검출만 함). 메인서버가 각인·색·모양을
+                //   pill_identification(식약처 낱알식별) 과 매칭해 약품명을
+                //   확정해야 한다. 이 매칭 단계가 누락돼 그동안 모든 후보가
+                //   "식별 미확정" 으로 표시되던 문제를 바로잡음.
                 schemas::IdentifyResponse resp;
-                resp.request_id      = image_req_id;
-                resp.confidence_tier = schemas::confidence_tier_from_score(
-                    vision_resp.get("candidates", Json::Value(Json::arrayValue))
-                               .size() > 0
-                        ? vision_resp["candidates"][0].get("confidence", 0.0).asDouble()
-                        : 0.0);
+                resp.request_id = image_req_id;
 
-                for (const auto& jc : vision_resp.get("candidates", Json::Value(Json::arrayValue))) {
-                    schemas::PillCandidate c;
-                    c.item_code   = jc.get("item_code", "").asString();
-                    c.drug_name   = jc.get("drug_name", "").asString();
-                    c.confidence  = jc.get("confidence", 0.0).asDouble();
-                    c.in_user_pool = false;     // DUR 단계에서 풀 매칭 → 별도 채움
-                    for (const auto& mk : jc.get("match_keys", Json::Value(Json::arrayValue))) {
-                        c.match_keys.push_back(mk.asString());
+                auto vdb = Connection::instance().client();
+
+                // 검출 1건 = 실물 알약 1개. 각 검출을 DB 매칭해 best 후보로 변환.
+                double top_score = 0.0;
+                const auto vis_cands =
+                    vision_resp.get("candidates", Json::Value(Json::arrayValue));
+                for (const auto& jc : vis_cands) {
+                    // --- 1) match_keys 파싱 ---
+                    std::string eng, color, shape;
+                    Json::Value mk_arr =
+                        jc.get("match_keys", Json::Value(Json::arrayValue));
+                    for (const auto& mk : mk_arr) {
+                        const std::string s = mk.asString();
+                        auto pos = s.find(':');
+                        if (pos == std::string::npos) continue;
+                        const std::string key = s.substr(0, pos);
+                        const std::string val = s.substr(pos + 1);
+                        if (key == "각인")      eng   = val;
+                        else if (key == "색")   color = val;
+                        else if (key == "모양") shape = val;
                     }
+                    // fallback — 개별 필드도 확인
+                    if (eng.empty())
+                        eng = jc.get("engraving_text", "").asString();
+                    if (color.empty())
+                        color = jc.get("color_label", "").asString();
+                    if (shape.empty())
+                        shape = jc.get("shape_label", "").asString();
+                    if (eng == "각인없음") eng.clear();
+
+                    const double det_conf =
+                        jc.get("detection_confidence", 0.0).asDouble();
+
+                    schemas::PillCandidate c;
+                    c.confidence   = det_conf;
+                    c.in_user_pool = false;
+                    for (const auto& mk : mk_arr)
+                        c.match_keys.push_back(mk.asString());
+
+                    // crop 썸네일 passthrough (다중 알약 카드 구분용)
+                    const std::string b64 =
+                        jc.get("crop_jpeg_b64", "").asString();
+                    if (!b64.empty())
+                        c.crop_image = "data:image/jpeg;base64," + b64;
+
+                    // --- 2) pill_identification 매칭 (각인>색>모양 가중 스코어) ---
+                    if (vdb && (!eng.empty() || !color.empty() || !shape.empty())) {
+                        try {
+                            // 각인 LIKE (양방향) + 색/모양 일치 점수화.
+                            //   score = 각인부분일치 5 + 색일치 2 + 모양일치 2
+                            std::string q =
+                                "SELECT p.item_code, p.drug_name, "
+                                "       p.classification_name, "
+                                "       d.efficacy_text, d.usage_text, "
+                                "  ((CASE WHEN ? <> '' AND "
+                                "        (p.engraving_front LIKE CONCAT('%', ?, '%') "
+                                "      OR p.engraving_back  LIKE CONCAT('%', ?, '%')) "
+                                "    THEN 5 ELSE 0 END) "
+                                " + (CASE WHEN ? <> '' AND p.color_front = ? "
+                                "    THEN 2 ELSE 0 END) "
+                                " + (CASE WHEN ? <> '' AND p.shape = ? "
+                                "    THEN 2 ELSE 0 END)) AS score "
+                                "FROM pill_identification p "
+                                "LEFT JOIN drug_overview d "
+                                "       ON d.item_code = p.item_code "
+                                "HAVING score > 0 "
+                                "ORDER BY score DESC, p.item_code "
+                                "LIMIT 1";
+                            auto mr = vdb->execSqlSync(
+                                q, eng, eng, eng, color, color, shape, shape);
+                            if (!mr.empty()) {
+                                auto row = mr[0];
+                                c.item_code = row["item_code"].as<std::string>();
+                                c.drug_name = row["drug_name"].as<std::string>();
+                                if (!row["classification_name"].isNull())
+                                    c.classification_name =
+                                        row["classification_name"].as<std::string>();
+                                if (!row["efficacy_text"].isNull())
+                                    c.efficacy_text =
+                                        row["efficacy_text"].as<std::string>();
+                                if (!row["usage_text"].isNull())
+                                    c.usage_text =
+                                        row["usage_text"].as<std::string>();
+                                const double sc_norm =
+                                    std::min(1.0,
+                                        row["score"].as<double>() / 9.0);
+                                // 검출 신뢰도 × 매칭 점수 종합
+                                c.confidence = det_conf * 0.5 + sc_norm * 0.5;
+                            }
+                        } catch (const orm::DrogonDbException&) {
+                            // 매칭 실패는 미확정으로 둠 (크래시 방지)
+                        }
+                    }
+                    top_score = std::max(top_score, c.confidence);
                     resp.candidates.push_back(std::move(c));
                 }
+
+                resp.confidence_tier =
+                    schemas::confidence_tier_from_score(top_score);
 
                 resp.guidance.tts_text = resp.candidates.empty()
                     ? "약을 식별하지 못했어요. 다시 촬영해 주세요."

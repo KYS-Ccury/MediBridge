@@ -18,6 +18,7 @@ struct PillCandidate {
     double  confidence = 0.0;
     QString match_keys;     // "engraving, shape, color" 식의 콤마 결합
     bool    in_user_pool = false;
+    QString crop_image;     // data URI ("data:image/jpeg;base64,...") or empty
 };
 
 class PillCandidateListModel : public QAbstractListModel
@@ -30,6 +31,7 @@ public:
         ConfidenceRole,
         MatchKeysRole,
         InUserPoolRole,
+        CropImageRole,
     };
 
     explicit PillCandidateListModel(QObject* parent = nullptr);
@@ -42,6 +44,11 @@ public:
     // 데이터 갱신 (Controller에서 호출)
     void set_candidates(const QVector<PillCandidate>& candidates);
     void clear();
+
+    // 사용자 편집 — 오검출 카드 삭제 / 수동 후보 추가 (QML 에서 호출)
+    Q_INVOKABLE void remove_at(int row);
+    Q_INVOKABLE void append_candidate(const QString& item_code,
+                                      const QString& drug_name);
 
 private:
     QVector<PillCandidate> candidates_;

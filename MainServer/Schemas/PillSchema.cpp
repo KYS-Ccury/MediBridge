@@ -53,6 +53,7 @@ Json::Value PillCandidate::to_json() const
     set_optional(v, "classification_name", classification_name);
     set_optional(v, "efficacy_text",       efficacy_text);
     set_optional(v, "usage_text",          usage_text);
+    set_optional(v, "crop_image",          crop_image);
     return v;
 }
 

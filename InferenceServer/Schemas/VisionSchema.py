@@ -67,6 +67,8 @@ class DetectRemoteCandidate(BaseModel):
     size_mm: Optional[float] = None
     # 식약처 매칭 키 종합 — 메인서버 DurChecker 등에 전달
     match_keys: list[str] = Field(default_factory=list)
+    # 검출 알약 crop 썸네일 (base64 JPEG, prefix 없음) — 다중 알약 카드 구분용
+    crop_jpeg_b64: Optional[str] = None
 
 
 class DetectRemoteResponse(BaseModel):

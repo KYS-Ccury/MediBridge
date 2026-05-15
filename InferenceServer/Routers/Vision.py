@@ -9,8 +9,10 @@ Vision Router — Vision PC (10.10.10.120:8003)
 ⭐ 2026-05-15 — 인효 담당자 코드 (engines/yolo_engine + lib/* + engines/cv_engine) 이식 후
     네트워크 라우터 작성. AWS S3+RDS 패턴 (사진 본체는 메인서버 통과 X — 보관 PC 직접 GET).
 """
+import base64
 from typing import Optional
 
+import cv2
 import httpx
 import numpy as np
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query
@@ -144,6 +146,26 @@ async def detect_remote(req: DetectRemoteRequest) -> DetectRemoteResponse:
         if size_mm is not None:
             match_keys.append(f"크기:{size_mm}mm")
 
+        # crop 썸네일 인코딩 (최대 변 240px 리사이즈 → JPEG q70 → base64).
+        #   다중 알약 시 클라가 "어느 카드 = 어느 실물" 판단하도록 전달.
+        crop_b64 = None
+        try:
+            ch, cw = crop.shape[:2]
+            if max(ch, cw) > 240:
+                scale = 240.0 / float(max(ch, cw))
+                thumb = cv2.resize(
+                    crop, (max(1, int(cw * scale)), max(1, int(ch * scale))),
+                    interpolation=cv2.INTER_AREA,
+                )
+            else:
+                thumb = crop
+            ok, buf = cv2.imencode(
+                ".jpg", thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            if ok:
+                crop_b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+        except Exception as e:
+            logger.warning(f"[Vision] crop 썸네일 인코딩 실패: {e}")
+
         candidates.append(DetectRemoteCandidate(
             crop_id=det.crop_id,
             bbox=det.bbox,
@@ -154,6 +176,7 @@ async def detect_remote(req: DetectRemoteRequest) -> DetectRemoteResponse:
             shape_label=shape.label,
             size_mm=size_mm,
             match_keys=match_keys,
+            crop_jpeg_b64=crop_b64,
         ))
         # 종합 신뢰도 가중치
         overall = det.confidence * 0.4 + engraving_conf * 0.4 + color.confidence * 0.2

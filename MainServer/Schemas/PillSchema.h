@@ -42,6 +42,10 @@ struct PillCandidate {
     std::optional<std::string> efficacy_text;         // e약은요 효능 (그대로 인용)
     std::optional<std::string> usage_text;            // e약은요 사용법 (그대로 인용)
 
+    // ⭐ 2026-05-15 — 검출 알약 crop 썸네일 (data URI: "data:image/jpeg;base64,...")
+    //   다중 알약 시 어느 카드가 어느 실물인지 사용자 식별용.
+    std::optional<std::string> crop_image;
+
     Json::Value to_json() const;
 };
 

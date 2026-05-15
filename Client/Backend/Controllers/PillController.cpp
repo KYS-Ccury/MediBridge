@@ -234,6 +234,7 @@ void PillController::handle_identify_response(const QByteArray& response, int st
         QStringList mk;
         for (const auto& m : co.value("match_keys").toArray()) mk << m.toString();
         c.match_keys = mk.join(", ");
+        c.crop_image = co.value("crop_image").toString();
         cands.push_back(c);
     }
     candidates_.set_candidates(cands);

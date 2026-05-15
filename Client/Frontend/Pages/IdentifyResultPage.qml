@@ -89,8 +89,9 @@ Page {
                 delegate: Rectangle {
                     // drug_name 미확정(빈 값) → 노란 배경 강조 (사용자 약 풀에서 선택 안내)
                     property bool name_unknown: !model.drug_name || model.drug_name.length === 0
+                    property bool has_crop: model.crop_image && model.crop_image.length > 0
                     width: candidates_list.width
-                    height: name_unknown ? 130 : 92
+                    height: name_unknown ? 150 : 112
                     color: name_unknown ? "#FFF8E1"
                                         : (model.in_user_pool ? "#E8F5E9" : "white")
                     border.color: name_unknown ? "#FFC107"
@@ -102,6 +103,33 @@ Page {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 12
+
+                        // 검출된 알약 실물 crop 썸네일 — 어느 카드=어느 실물 식별용
+                        Rectangle {
+                            Layout.preferredWidth: 84
+                            Layout.preferredHeight: 84
+                            Layout.alignment: Qt.AlignVCenter
+                            color: "#F5F5F5"
+                            border.color: "#D5DCE4"
+                            radius: 6
+                            clip: true
+                            Image {
+                                anchors.fill: parent
+                                anchors.margins: 2
+                                source: has_crop ? model.crop_image : ""
+                                fillMode: Image.PreserveAspectFit
+                                visible: has_crop
+                                asynchronous: true
+                            }
+                            Label {
+                                anchors.centerIn: parent
+                                visible: !has_crop
+                                text: qsTr("이미지\n없음")
+                                horizontalAlignment: Text.AlignHCenter
+                                font.pixelSize: 10
+                                color: "#9E9E9E"
+                            }
+                        }
 
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -183,9 +211,18 @@ Page {
                         ColumnLayout {
                             Layout.alignment: Qt.AlignVCenter
                             spacing: 2
-                            visible: !name_unknown
 
+                            // 오검출 카드 삭제 (사용자 편집)
+                            ToolButton {
+                                text: "✕"
+                                font.pixelSize: 18
+                                Layout.alignment: Qt.AlignHCenter
+                                ToolTip.visible: hovered
+                                ToolTip.text: qsTr("이 후보를 목록에서 제거 (오검출 시)")
+                                onClicked: pill_controller.candidates.remove_at(index)
+                            }
                             Label {
+                                visible: !name_unknown
                                 text: Math.round(model.confidence * 100) + "%"
                                 font.pixelSize: 22
                                 font.bold: true
@@ -193,6 +230,7 @@ Page {
                                 Layout.alignment: Qt.AlignHCenter
                             }
                             Label {
+                                visible: !name_unknown
                                 text: qsTr("신뢰도")
                                 font.pixelSize: 10
                                 color: "#5B6478"
@@ -201,6 +239,14 @@ Page {
                         }
                     }
                 }
+            }
+
+            // 수동 후보 추가 — 오검출/누락 시 사용자가 약 이름으로 직접 추가
+            AppButton {
+                Layout.fillWidth: true
+                text: qsTr("➕ 약 이름으로 후보 추가")
+                variant: "secondary"
+                onClicked: add_candidate_dialog.open()
             }
 
             // 다중 알약 안내 (후보 ≥ 2 시 표시)
@@ -414,6 +460,13 @@ Page {
                 Layout.fillWidth: true
                 model: pill_controller.candidates
                 textRole: "drug_name"
+                enabled: count > 0
+                // 후보 없음 / 이름 미확정일 때 빈칸 대신 안내 문구
+                displayText: count === 0
+                    ? qsTr("(식별 미확정 — 약을 식별하지 못했어요)")
+                    : (currentText && currentText.length > 0
+                       ? currentText
+                       : qsTr("(이름 미상 — 다른 방법으로 선택해주세요)"))
                 onActivated: function(idx) {
                     var m = pill_controller.candidates
                     var c = m.data(m.index(idx, 0), Qt.UserRole + 1)
@@ -424,6 +477,14 @@ Page {
                     if (count > 0 && source_candidate.checked) currentIndex = 0
                 }
             }
+            Label {
+                visible: source_candidate.checked && candidate_combo.count === 0
+                text: qsTr("(식별 미확정 — '내 약 풀' 또는 '직접 입력'을 이용하거나 위에서 후보를 추가하세요)")
+                color: "#E65100"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
 
             // ----- 2-b) 내 약 풀 ComboBox -----
             ComboBox {
@@ -432,6 +493,10 @@ Page {
                 Layout.fillWidth: true
                 model: pill_controller.pool_items
                 textRole: "drug_name"
+                enabled: count > 0
+                displayText: count === 0
+                    ? qsTr("(등록된 약이 없습니다)")
+                    : currentText
                 onActivated: function(idx) {
                     var m = pill_controller.pool_items
                     var c = m.data(m.index(idx, 0), Qt.UserRole + 2)  // ItemCodeRole
@@ -561,5 +626,135 @@ Page {
         target: history_controller
         function onRecord_succeeded() { app_controller.show_toast(qsTr("복용 기록 저장 완료")) }
         function onRecord_failed(code) { app_controller.show_toast(qsTr("복용 기록 실패: ") + code) }
+    }
+
+    // ===== 수동 후보 추가 다이얼로그 — 약 이름 검색 → 후보 목록에 추가 =====
+    //  오검출/누락 시 사용자가 직접 약을 찾아 후보 카드로 넣는다.
+    Dialog {
+        id: add_candidate_dialog
+        title: qsTr("약 이름으로 후보 추가")
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(parent.width * 0.9, 520)
+        standardButtons: Dialog.Close
+
+        ListModel { id: addc_results }
+        property string sel_code: ""
+        property string sel_name: ""
+
+        onOpened: {
+            addc_input.text = ""
+            addc_results.clear()
+            sel_code = ""
+            sel_name = ""
+        }
+
+        Connections {
+            target: pill_controller
+            function onDrug_search_completed(results) {
+                if (!add_candidate_dialog.visible) return
+                addc_results.clear()
+                for (var i = 0; i < results.length; i++) {
+                    addc_results.append({
+                        item_code: results[i].item_code,
+                        drug_name: results[i].drug_name,
+                        classification_name: results[i].classification_name || ""
+                    })
+                }
+                if (results.length === 0)
+                    app_controller.show_toast(qsTr("일치하는 약을 찾지 못했어요."))
+            }
+            function onDrug_search_failed(code) {
+                if (add_candidate_dialog.visible)
+                    app_controller.show_toast(qsTr("검색 실패: ") + code)
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                TextField {
+                    id: addc_input
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("약 이름 입력 (예: 타이레놀)")
+                    onAccepted: pill_controller.search_drug_name(text.trim())
+                }
+                AppButton {
+                    text: qsTr("검색")
+                    Layout.preferredWidth: 80
+                    enabled: addc_input.text.trim().length > 0
+                    onClicked: pill_controller.search_drug_name(addc_input.text.trim())
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 220
+                color: "#FAFAFA"
+                border.color: "#E0E0E0"
+                radius: 6
+                ListView {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    clip: true
+                    model: addc_results
+                    spacing: 4
+                    delegate: Rectangle {
+                        width: ListView.view.width
+                        height: 48
+                        color: add_candidate_dialog.sel_code === model.item_code
+                               ? "#E3F2FD" : "white"
+                        border.color: add_candidate_dialog.sel_code === model.item_code
+                                      ? "#1565C0" : "#D5DCE4"
+                        radius: 4
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                add_candidate_dialog.sel_code = model.item_code
+                                add_candidate_dialog.sel_name = model.drug_name
+                            }
+                        }
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 2
+                            Label {
+                                text: model.drug_name
+                                font.pixelSize: 13; font.bold: true
+                                color: "#1A2238"; elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            Label {
+                                text: qsTr("코드: ") + model.item_code
+                                      + (model.classification_name.length > 0
+                                         ? "  ·  " + model.classification_name : "")
+                                font.pixelSize: 11; color: "#5B6478"
+                                elide: Text.ElideRight; Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+            }
+
+            AppButton {
+                Layout.fillWidth: true
+                text: add_candidate_dialog.sel_code.length > 0
+                      ? qsTr("➕ \"") + add_candidate_dialog.sel_name + qsTr("\" 후보로 추가")
+                      : qsTr("➕ 후보로 추가 (먼저 약을 선택하세요)")
+                enabled: add_candidate_dialog.sel_code.length > 0
+                onClicked: {
+                    pill_controller.candidates.append_candidate(
+                        add_candidate_dialog.sel_code,
+                        add_candidate_dialog.sel_name)
+                    app_controller.show_toast(
+                        qsTr("후보 추가됨: ") + add_candidate_dialog.sel_name)
+                    add_candidate_dialog.close()
+                }
+            }
+        }
     }
 }
