@@ -157,7 +157,6 @@ Page {
                             AppButton {
                                 visible: name_unknown
                                 text: qsTr("💊 내 약 풀에서 선택")
-                                Layout.preferredHeight: 30
                                 Layout.preferredWidth: 200
                                 onClicked: {
                                     record_dialog.preset_source = "pool"
@@ -170,7 +169,6 @@ Page {
                             AppButton {
                                 visible: !name_unknown
                                 text: qsTr("💊 이 약 기록·등록")
-                                Layout.preferredHeight: 30
                                 Layout.preferredWidth: 200
                                 onClicked: {
                                     // 후보 카드 클릭 → record_dialog 가 이 약으로 자동 시작

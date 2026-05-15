@@ -18,7 +18,13 @@ Page {
     Connections {
         target: pill_controller
         function onIdentify_succeeded() {
-            // 촬영 및 식별 성공 시 결과 페이지로 이동
+            // ⚠ 페이지 전환 전에 스트림을 먼저 멈추고 싱크를 끊는다.
+            //   안 그러면 CameraPage(=VideoOutput) 파괴 후에도 백그라운드
+            //   캡처 프레임이 삭제된 QVideoSink 로 들어가 액세스 위반(크래시).
+            if (typeof camera_stream_controller !== "undefined") {
+                camera_stream_controller.stop_stream()
+                camera_stream_controller.videoSink = null
+            }
             stack.replace("IdentifyResultPage.qml")
         }
         function onIdentify_failed(error_code) {
