@@ -145,14 +145,25 @@ void Report::handle_generate(const drogon::HttpRequestPtr& req,
         resp.consumed_summary.total_intakes = static_cast<int>(rows.size());
 
         // 부작용 인용 (식약처 e약은요 그대로 인용 — LLM 변환 X)
+        //
+        // ⭐ 2026-05-15 버그 수정: 기존 switch(case 1-4) 는 5개 이상 약 종류 시 default 분기로
+        //    codes[0] 만 bind 되어 SQL placeholder 미스매치 (`?,?,?,?` 안 채워짐).
+        //    item_code 는 DB 의 PK 라 alphanumeric only — SQL injection 위험 없음.
+        //    placeholder ? 대신 quote 한 리터럴을 직접 SQL 에 박아 N 약 종류 지원.
         if (!agg.empty()) {
             std::string in_clause = "(";
-            std::vector<std::string> codes;
             int i = 0;
             for (auto& kv : agg) {
                 if (i++) in_clause += ",";
-                in_clause += "?";
-                codes.push_back(kv.first);
+                // alphanumeric PK — escape 불필요. 그래도 방어적으로 따옴표 이중 보호:
+                std::string safe = kv.first;
+                // ' → '' 치환 (defense in depth)
+                size_t pos = 0;
+                while ((pos = safe.find('\'', pos)) != std::string::npos) {
+                    safe.replace(pos, 1, "''");
+                    pos += 2;
+                }
+                in_clause += "'" + safe + "'";
             }
             in_clause += ")";
             std::string side_sql =
@@ -162,15 +173,7 @@ void Report::handle_generate(const drogon::HttpRequestPtr& req,
                 "LEFT JOIN drug_overview d ON d.item_code = p.item_code "
                 "WHERE p.item_code IN " + in_clause;
 
-            orm::Result side_rows = [&]() {
-                switch (codes.size()) {
-                    case 1: return db->execSqlSync(side_sql, codes[0]);
-                    case 2: return db->execSqlSync(side_sql, codes[0], codes[1]);
-                    case 3: return db->execSqlSync(side_sql, codes[0], codes[1], codes[2]);
-                    case 4: return db->execSqlSync(side_sql, codes[0], codes[1], codes[2], codes[3]);
-                    default: return db->execSqlSync(side_sql, codes[0]);
-                }
-            }();
+            orm::Result side_rows = db->execSqlSync(side_sql);
             for (auto row : side_rows) {
                 schemas::SideEffectQuote q;
                 q.item_code        = row["item_code"].as<std::string>();

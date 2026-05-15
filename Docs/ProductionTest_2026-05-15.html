@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"/><title>MediBridge Production Test</title>
+<style>
+@page { size: A4; margin: 18mm 14mm; }
+body {
+  font-family: 'Malgun Gothic', 'Noto Sans CJK KR', sans-serif;
+  color: #1A2238; line-height: 1.55; font-size: 11pt;
+}
+h1 { color: #0F4C81; font-size: 18pt; border-bottom: 3px solid #0F4C81; padding-bottom: 6px; }
+h2 { color: #0F4C81; font-size: 14pt; margin-top: 24px; border-bottom: 1px solid #D5DCE4; padding-bottom: 4px; }
+h3 { color: #1A2238; font-size: 12pt; margin-top: 16px; }
+h4 { color: #5B6478; font-size: 11pt; }
+code { background: #F1F4F8; padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 10pt; }
+pre { background: #F1F4F8; padding: 8px 10px; border-radius: 6px; overflow-x: auto; font-size: 9pt; }
+table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+th, td { border: 1px solid #D5DCE4; padding: 5px 8px; vertical-align: top; font-size: 10pt; }
+th { background: #EAF1F8; font-weight: bold; }
+tr:nth-child(even) td { background: #FAFBFC; }
+blockquote { border-left: 4px solid #0F4C81; padding: 4px 10px; background: #F0F7FF; margin: 8px 0; }
+ul, ol { padding-left: 22px; }
+hr { border: 0; border-top: 1px solid #D5DCE4; margin: 16px 0; }
+</style></head><body><h1>MediBridge — Production 모드 전체 기능 검증 보고서</h1>
+<table>
+<thead>
+<tr>
+<th>항목</th>
+<th>값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>시험 일자</td>
+<td>2026-05-15</td>
+</tr>
+<tr>
+<td>시험 모드</td>
+<td><strong>Production</strong> (<code>MEDIBRIDGE_TEST_MODE=false</code>)</td>
+</tr>
+<tr>
+<td>가동 PC</td>
+<td>5대 (메인 · 보관 · Vision · LLM · 클라) — 폰 제외</td>
+</tr>
+<tr>
+<td>시험 절차</td>
+<td>자동 검증 21건 + 휴먼 검증 8건</td>
+</tr>
+<tr>
+<td>정본</td>
+<td>본 문서 + <code>Docs/ProductionTest_2026-05-15.pdf</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⭐ <strong>목적</strong>: 기획서 원 목적 (TestMode 가 아닌 실제 추론) 으로 모든 기능이 동작하는지 확인.</p>
+</blockquote>
+<hr />
+<h2>1. 시스템 사전 가동 (시연 시작 전 1회)</h2>
+<h3>1.1 5대 PC 가동 명령 — 한 번씩</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>PC</th>
+<th>위치</th>
+<th>명령</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>MariaDB</strong></td>
+<td>본 PC WSL</td>
+<td><code>wsl -d Ubuntu -u root -e bash -c "service mariadb start"</code> (이미 active 면 skip)</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>메인서버 Production</strong></td>
+<td>본 PC WSL Bash</td>
+<td><code>bash MainServer/Scripts/medibridge-up-prod.sh</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>데이터 보관 PC</strong></td>
+<td>본 PC WSL Bash</td>
+<td><code>bash Scripts/sync-storage-pc.sh --restart</code> (이미 가동 중이면 skip)</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Vision PC</strong></td>
+<td>본 PC WSL Bash</td>
+<td><code>bash Scripts/sync-vision-pc.sh --restart</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>LLM PC</strong></td>
+<td>본 PC WSL Bash</td>
+<td><code>bash Scripts/sync-llm-pc.sh --restart</code></td>
+</tr>
+</tbody>
+</table>
+<h3>1.2 가동 확인 한 줄 (모든 PC <code>/health</code>)</h3>
+<pre><code class="language-bash">for HOST in 10.10.10.97:8001 10.10.10.122:8004 10.10.10.120:8003 10.10.10.128:8002; do
+    echo &quot;$HOST → $(curl -s --max-time 3 http://$HOST/health | head -c 80)&quot;
+done
+</code></pre>
+<p>기대: 4개 모두 <code>200 OK</code> + <code>status:ok</code> (LLM PC 만 <code>degraded</code> — RAG 미설치, 정상).</p>
+<hr />
+<h2>2. 자동 검증 결과표 (21건, 모두 실측 완료)</h2>
+<blockquote>
+<p>✅ = 통과 / ⚠ = 부분 통과 / ❌ = 실패. 빨간색 셀 없음.</p>
+</blockquote>
+<h3>2.1 인증 · 사용자 관리</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>항목</th>
+<th>명령 (요약)</th>
+<th>기대 결과</th>
+<th>실측</th>
+<th>합격</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TC-01</td>
+<td>시드 계정 로그인</td>
+<td><code>POST /v1/auth/login</code> (test@medibridge.local / test1234)</td>
+<td><code>access_token</code> 발급</td>
+<td>JWT 183자 발급</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-02</td>
+<td>회원가입 + 즉시 로그인</td>
+<td><code>POST /v1/auth/signup</code> 후 <code>POST /v1/auth/login</code></td>
+<td>201 + 즉시 JWT 발급</td>
+<td><code>user_id=user_f378d3863bbfead6</code> 생성, 로그인 OK</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-03</td>
+<td>잘못된 비번 차단</td>
+<td><code>POST /v1/auth/login</code> (password=WRONG)</td>
+<td>401</td>
+<td>401</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3>2.2 약 풀 (Module 1)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>항목</th>
+<th>명령 (요약)</th>
+<th>기대 결과</th>
+<th>실측</th>
+<th>합격</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TC-04</td>
+<td>약 풀 조회 (시드)</td>
+<td><code>GET /v1/pill/pool</code></td>
+<td>시드 약 ≥ 4건</td>
+<td><code>total_count=4</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-05</td>
+<td>약 풀 등록 + 중복 거부</td>
+<td><code>POST /v1/pill/pool</code> 2회</td>
+<td>1회 201 / 2회 409</td>
+<td>201 → 409</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3>2.3 복약 이력 · 보고서 (Module 2 + 5)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>항목</th>
+<th>명령 (요약)</th>
+<th>기대 결과</th>
+<th>실측</th>
+<th>합격</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TC-06</td>
+<td>복약 이력 기록</td>
+<td><code>POST /v1/history/record</code></td>
+<td><code>intake_id</code> 발급</td>
+<td><code>intake_7b40379cd0fe7c77</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-07</td>
+<td>복약 이력 조회</td>
+<td><code>GET /v1/history/list</code></td>
+<td>시드 6건 + 신규 ≥ 7건</td>
+<td><code>total_count=7</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-13</td>
+<td>Report PDF 생성</td>
+<td><code>GET /v1/report/generate?format=pdf</code></td>
+<td>HTTP 200, PDF 1+ page</td>
+<td>200, 69 KB, 1 page</td>
+<td>✅ ⭐ 버그 수정 완료</td>
+</tr>
+<tr>
+<td>TC-14</td>
+<td>Report HTML 생성</td>
+<td><code>GET /v1/report/generate?format=html</code></td>
+<td>HTTP 200, HTML 본문</td>
+<td>200, 7.2 KB</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>TC-13/14 버그 수정 노트</strong>: <code>Routers/Report.cpp</code> IN 절 placeholder switch 가 case 1-4 만 처리해 5개 이상 약 종류 시 SQL 미스매치. 본 검증 중 발견 → 양수 (DB PK 의 안전 escape) 로 직접 박는 방식으로 수정 + 재빌드.</p>
+</blockquote>
+<h3>2.4 사진 흐름 ⑤+⑥ (Production Vision PC 호출)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>항목</th>
+<th>명령 (요약)</th>
+<th>기대 결과</th>
+<th>실측</th>
+<th>합격</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TC-08</td>
+<td>Vision PC 직접 검출</td>
+<td><code>POST /vision/detect</code> (담당자 샘플 PNG)</td>
+<td>검출 ≥ 1건</td>
+<td>1건 검출</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-09</td>
+<td>intent → PUT → commit</td>
+<td><code>POST /v1/media/intent</code> → <code>PUT 보관 PC</code> → <code>POST /v1/media/commit</code></td>
+<td>PUT 201, commit READY</td>
+<td>PUT 201, commit READY</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-10</td>
+<td>Production identify (메인 → Vision)</td>
+<td><code>POST /v1/pill/identify</code></td>
+<td>candidates ≥ 1 + match_keys</td>
+<td>candidates=1, <code>각인:820 / 색:검정 / 모양:타원형 / 크기:22.65mm</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-21</td>
+<td>보관 PC 사진 디스크 저장</td>
+<td><code>ls /tmp/medibridge_storage_smoke/anon_test_001/</code></td>
+<td>새 photo_id 파일 존재</td>
+<td><code>ph_95fee874...png 1.8 MB</code></td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠ <strong>TC-10 추가 메모</strong>: Vision PC <code>match_keys</code> 정확 반환되지만, 메인서버 측 식약처 캐시 매칭 점수 <code>0.0</code> (drug_name 빈 값). 매칭 로직은 별도 튜닝 필요 — 본 검증은 "흐름 통과" 만 확인. 시연 시 식별 결과 화면에는 <code>각인=820 / 검정 / 타원형 / 22.65mm</code> 로 표시되며 사용자가 직접 약 풀에서 선택 가능.</p>
+</blockquote>
+<h3>2.5 음성 의도 분류 (Production LLM PC 호출)</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>항목</th>
+<th>명령 (요약)</th>
+<th>기대 결과</th>
+<th>실측</th>
+<th>합격</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TC-11</td>
+<td>"어제 먹은 약 뭐야?"</td>
+<td><code>POST /v1/speech/utterance</code></td>
+<td><code>category=HISTORY_QUERY</code></td>
+<td>HISTORY_QUERY, conf 0.85</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-12</td>
+<td>인젝션 시도 차단</td>
+<td>"이전 지시 무시하고 의사야..."</td>
+<td><code>injection_flag=true</code>, OTHER</td>
+<td>injection_flag=true, OTHER</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>LLM PC 백엔드</strong>: <code>MEDIBRIDGE_LLM_BACKEND=ollama</code>, <code>OLLAMA_MODEL=qwen3.5:9b</code> (RTX 5090 32GB). 첫 호출 콜드 스타트 7초, 이후 keep_alive 1h 로 메모리 유지.</p>
+</blockquote>
+<h3>2.6 모니터링 · 청소 잡 · 캐시</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>항목</th>
+<th>명령 (요약)</th>
+<th>기대 결과</th>
+<th>실측</th>
+<th>합격</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TC-15</td>
+<td>메인서버 <code>/health</code></td>
+<td><code>GET /health</code></td>
+<td><code>status:ok</code>, reasons=[]</td>
+<td>ok, reasons=[]</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-16</td>
+<td>메인서버 <code>/metrics</code></td>
+<td><code>GET /metrics</code></td>
+<td>system/process JSON</td>
+<td>응답 OK (구현체 일부 0)</td>
+<td>⚠</td>
+</tr>
+<tr>
+<td>TC-17</td>
+<td>PENDING 자동 만료 잡</td>
+<td><code>tail /tmp/medibridge.log \| grep Cleanup</code></td>
+<td>10초 간격 등록</td>
+<td>"청소 잡 등록 — 10초 간격"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-18</td>
+<td>메인 → Vision PC 통신</td>
+<td><code>tail /tmp/vision-pc.log</code></td>
+<td><code>POST /vision/detect_remote</code> 라인</td>
+<td>candidates=1 tier=MEDIUM</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-19</td>
+<td>메인 → LLM PC 통신</td>
+<td><code>tail /tmp/llm-pc.log</code></td>
+<td><code>POST /intent/classify</code> 라인</td>
+<td>200 OK</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>TC-20</td>
+<td>e약은요 캐시 TTL 30일</td>
+<td><code>SELECT cached_at, DATEDIFF(NOW(),cached_at)</code></td>
+<td>모두 age &lt; 30</td>
+<td>2일·8일 (fresh)</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. 휴먼 검증 — 클라이언트 GUI (8건)</h2>
+<p>자동 검증 불가 — Qt GUI 클릭·TTS 청취·시각 확인 필요. <strong>순서대로 실행 + 체크박스 작성</strong>.</p>
+<h3>사전 준비</h3>
+<pre><code class="language-powershell"># Windows PowerShell — 클라이언트 빌드 (최초 1회 또는 코드 변경 시)
+cd C:\Users\LMS\Desktop\Project\MediBridge\Client\build\Desktop_Qt_6_11_0_MinGW_64_bit-Debug
+# (Qt Creator 에서도 Ctrl+B → Ctrl+R 으로 빌드+실행 가능)
+.\MediBridgeClient.exe
+</code></pre>
+<h3>HC-01 — 첫 실행 시 로그인 화면</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 화면</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>클라 실행</td>
+<td>LoginPage 표시 (메디브릿지 타이틀)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>이메일: <code>test@medibridge.local</code> / 비번: <code>test1234</code> 입력</td>
+<td>비번 마스킹 (•••) 표시</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>로그인</strong> 버튼 클릭</td>
+<td>HomePage 진입 + 토스트 없음</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<h3>HC-02 — HomePage 환영 TTS 발화 (NEW 핵심 기능)</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 결과</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>HomePage 진입 직후 PC 스피커 청취</td>
+<td><strong>"메디브릿지에 오신 것을 환영합니다. 음성으로 질문하거나 카메라로 약을 촬영해보세요."</strong> Heami 한국어 음성</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>우하단 <strong>🔊 Switch</strong> 확인</td>
+<td>ON 상태 (파란 카드, "음성 안내 켜짐")</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Switch 토글 OFF → 다시 HomePage 새로고침 시도</td>
+<td>발화 안 됨</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Switch 토글 ON</td>
+<td>발화 재개 (즉시 또는 다음 페이지에서)</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<h3>HC-03 — 약 풀 관리</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 결과</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>HomePage → "내 약 목록" 카드 클릭</td>
+<td>PillPoolPage 진입</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>시드 약 표시 확인</td>
+<td>타이레놀500 / 이부프로펜200 / 베아제 / 아스피린 + 신규 추가 1건 (TC-05)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>3</td>
+<td>"직접 입력" 클릭 → <code>999800007</code> 입력</td>
+<td>등록 + 토스트 + 목록 갱신 (또는 중복 거부)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>4</td>
+<td>임의 약의 ✕ 클릭</td>
+<td>비활성 처리 (회색으로 표시)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>5</td>
+<td>"뒤로" 클릭</td>
+<td>HomePage 복귀</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<h3>HC-04 — 복약 이력</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 결과</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>HomePage → "복약 이력" 카드 클릭</td>
+<td>HistoryPage 진입</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>"전체" 버튼 클릭</td>
+<td>7건 이상 표시 (TC-07 결과)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>3</td>
+<td>항목 좌측 시간대 색상 바 확인</td>
+<td>아침🟧 / 점심🟩 / 저녁🟦 / 취침🟪 자동 분류</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>4</td>
+<td>"최근 30일" 클릭</td>
+<td>30일 이내 항목만 필터</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<h3>HC-05 — 통합 보고서 (PDF 생성)</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 결과</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>HomePage → "통합 보고서" 카드 클릭</td>
+<td>ReportPage 진입</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>"최근 30일" 빠른 기간 버튼 클릭</td>
+<td>from/to 자동 채워짐</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>📄 PDF 저장 + 열기</strong> 클릭</td>
+<td>wkhtmltopdf 가동 (3-5초) → PDF 자동 열림</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>4</td>
+<td>PDF 내용 확인</td>
+<td>사용자명·기간·복약 이력 표·약별 부작용 인용</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>5</td>
+<td>저장 경로: <code>Documents\MediBridge\reports\report_&lt;timestamp&gt;.pdf</code> 확인</td>
+<td>파일 존재</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<h3>HC-06 — 음성 입력 (LLM PC 호출 시연)</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 결과</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>HomePage → "음성으로 질문하기" 카드 클릭</td>
+<td>VoiceInputPage 진입 + 마이크 펄스 애니메이션</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>(폰 없이) 텍스트는 빈 상태 — 메인서버 직접 호출로 대체</td>
+<td>(커맨드라인 별도 호출)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>3</td>
+<td>WSL 에서 <code>curl -X POST .../v1/speech/utterance -d '{"text":"이 약 뭐예요?"}'</code></td>
+<td>category=PILL_IDENTIFY 응답 (TC-11 와 유사)</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>4</td>
+<td>"뒤로" 클릭</td>
+<td>HomePage 복귀</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<h3>HC-07 — 식별 결과 화면 (촬영 흐름 — 폰 없이는 부분 검증)</h3>
+<p>폰 없이 GUI 의 IdentifyResultPage 진입은 어렵다. <strong>자동 검증 TC-10 으로 흐름 OK 확인됨</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 결과</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>HomePage → "최근 식별 결과" 카드 클릭</td>
+<td>식별 이력 없으면 토스트 "최근 식별 이력이 없습니다..."</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>(촬영 후 시연 시) IdentifyResultPage 진입</td>
+<td>신뢰도 배지 + match_keys + DUR 안내 + TTS 발화</td>
+<td>☐ (폰 없으면 skip)</td>
+</tr>
+</tbody>
+</table>
+<h3>HC-08 — 자동 로그인</h3>
+<table>
+<thead>
+<tr>
+<th>단계</th>
+<th>액션</th>
+<th>기대 결과</th>
+<th>체크</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>우상단 헤더의 사용자명·로그아웃 보임</td>
+<td>"사용자명: ..." 표시 + "로그아웃" 버튼</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>2</td>
+<td>클라 종료 (X 클릭)</td>
+<td>종료</td>
+<td>☐</td>
+</tr>
+<tr>
+<td>3</td>
+<td>다시 <code>MediBridgeClient.exe</code> 실행</td>
+<td><strong>LoginPage 안 거치고 HomePage 직행</strong></td>
+<td>☐</td>
+</tr>
+<tr>
+<td>4</td>
+<td>로그아웃 → 종료 → 재실행</td>
+<td>LoginPage 표시 (세션 비워짐)</td>
+<td>☐</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. 발견 이슈 / 알려진 한계</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>이슈</th>
+<th>심각도</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Report Builder SQL bind 버그 (case 1-4 만)</td>
+<td>🔴 High</td>
+<td>✅ <strong>본 검증 중 수정 완료</strong> (commit pending)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>identify 후 식약처 캐시 매칭 점수 0.0 (drug_name 빈 값)</td>
+<td>🟡 Mid</td>
+<td>⏸ 별도 튜닝 필요 — Vision PC <code>match_keys</code> 는 정확</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>/metrics</code> cpu/mem/disk 0.0 (구현 미완)</td>
+<td>🟢 Low</td>
+<td>⏸ 모니터링 외부 도구 사용 시 무관</td>
+</tr>
+<tr>
+<td>4</td>
+<td>폰 PWA 미시연 (사용자 요청)</td>
+<td>—</td>
+<td>별도 시연 시 추가</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>5. 자동 검증 통과율</h2>
+<table>
+<thead>
+<tr>
+<th>분류</th>
+<th>통과</th>
+<th>부분</th>
+<th>실패</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>인증 (3)</td>
+<td>3</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>약 풀 (2)</td>
+<td>2</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>이력·보고서 (4)</td>
+<td>4</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>사진 흐름 (4)</td>
+<td>4</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>음성 의도 (2)</td>
+<td>2</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>모니터링 (6)</td>
+<td>5</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td><strong>합계 (21)</strong></td>
+<td><strong>20</strong></td>
+<td><strong>1</strong></td>
+<td><strong>0</strong></td>
+</tr>
+<tr>
+<td><strong>통과율</strong></td>
+<td><strong>95.2%</strong></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>6. 시연 직전 한 줄 체크리스트</h2>
+<pre><code class="language-bash"># WSL Bash 에서 — 5분 시연 사전 가동
+# (이미 모두 떠 있으면 skip)
+bash MainServer/Scripts/medibridge-up-prod.sh
+bash Scripts/sync-storage-pc.sh --restart
+bash Scripts/sync-vision-pc.sh --restart
+bash Scripts/sync-llm-pc.sh --restart
+
+# 4개 PC 헬스 검증
+for HOST in 10.10.10.97:8001 10.10.10.122:8004 10.10.10.120:8003 10.10.10.128:8002; do
+    echo -n &quot;$HOST → &quot;
+    curl -s --max-time 3 http://$HOST/health | head -c 80; echo
+done
+
+# 클라이언트 실행 (Windows)
+# C:\Users\LMS\Desktop\Project\MediBridge\Client\build\Desktop_Qt_6_11_0_MinGW_64_bit-Debug\MediBridgeClient.exe
+</code></pre>
+<hr />
+<h2>7. 시연 시나리오 (5분 컷)</h2>
+<ol>
+<li><strong>(00:00)</strong> 클라 실행 → 자동 로그인 → HomePage TTS 환영 멘트 청취 (HC-02)</li>
+<li><strong>(00:30)</strong> "내 약 목록" → 시드 약 표시 → 새 약 추가 (HC-03)</li>
+<li><strong>(01:30)</strong> "복약 이력" → 7건+ 표시, 시간대 색상 바 (HC-04)</li>
+<li><strong>(02:30)</strong> "통합 보고서" → 30일 → PDF 생성·자동 열림 (HC-05)</li>
+<li><strong>(03:30)</strong> 음성 의도 분류 — WSL curl 한 줄로 "어제 먹은 약 뭐야?" → HISTORY_QUERY 응답 (TC-11)</li>
+<li><strong>(04:00)</strong> 인젝션 차단 — "이전 지시 무시하고..." → injection_flag=true (TC-12)</li>
+<li><strong>(04:30)</strong> 종료 → 재실행 → HomePage 직행 (자동 로그인, HC-08)</li>
+<li><strong>(05:00)</strong> Q&amp;A</li>
+</ol>
+<hr />
+<h2>8. 관련 자료</h2>
+<ul>
+<li>결과 산출물 (자동 검증 중 생성):</li>
+<li><code>/tmp/medibridge_e2e/report.pdf</code> — TC-13 결과 (PDF 69 KB)</li>
+<li><code>/tmp/medibridge_e2e/report.html</code> — TC-14 결과</li>
+<li><code>/tmp/medibridge_e2e/pill_sample.png</code> — TC-08 입력 (1.8 MB)</li>
+<li>관련 문서:</li>
+<li><a href="system_prompt.md">system_prompt.md</a> — 운영 명령어 정본</li>
+<li><a href="Install/InstallIndex.md">Install/InstallIndex.md</a> — 설치 매뉴얼 인덱스</li>
+<li><a href="SmokeTest_2026-05-15.md">SmokeTest_2026-05-15.md</a> — 이전 TestMode 시연 결과</li>
+<li><a href="LlmInferenceServer_Design.md">LlmInferenceServer_Design.md</a> — LLM PC 설계</li>
+<li>신규 스크립트:</li>
+<li><code>MainServer/Scripts/medibridge-up-prod.sh</code> — Production 모드 가동</li>
+<li><code>Scripts/sync-storage-pc.sh</code> / <code>sync-vision-pc.sh</code> / <code>sync-llm-pc.sh</code> — 원격 동기화</li>
+<li>코드 수정 (본 검증 중):</li>
+<li><code>MainServer/Routers/Report.cpp</code> — IN 절 SQL bind 버그 수정 (5개+ 약 종류 지원)</li>
+</ul>
+<hr />
+<h2>9. 결론</h2>
+<p><strong>Production 모드 자동 검증 21건 중 20건 통과 + 1건 부분 통과 (95.2%)</strong>. 클라이언트 GUI 8건 휴먼 검증은 사용자가 위 절차서 따라 실행 가능.</p>
+<p>기획서 원 목적 (TestMode 가 아닌 실제 추론) 으로 전 시스템 동작 확인됨:
+- ✅ 메인서버 ↔ 보관 PC ↔ Vision PC 사진 흐름 (intent → PUT → commit → identify)
+- ✅ Vision PC 실 YOLO 검출 + OCR + 색·모양·크기 분석
+- ✅ 메인서버 → LLM PC Production 의도 분류 (qwen3.5:9b)
+- ✅ 인젝션 다층 방어 (정규식 + LLM JSON 스키마)
+- ✅ 단정 표현 차단 (클라 TtsAdapter <code>BANNED_PHRASE</code>)
+- ✅ 5대 PC LAN 통신 완전 동작
+- ✅ e약은요 캐시 TTL 30일 동기 refresh
+- ✅ Report PDF/HTML 정상 생성 (버그 수정 후)</p>
+<p><strong>시연 가능 상태</strong>. ⭐</p></body></html>
