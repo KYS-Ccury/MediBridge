@@ -1,15 +1,14 @@
 // =====================================================
-// DrugOverviewCache — 구현
+// DrugOverviewCache — 구현 (TTL 30일 동기 refresh, 2026-05-15 회귀)
 // =====================================================
-// 정책:
-//   1차 DB SELECT → 미스 시 PdmaApiClient HTTPS GET → DB INSERT.
-//   TTL 정책 없음 — 식약처 본문은 자주 안 바뀜. 갱신은 CSV 일괄 적재 (import_pdma.py) 로.
+// 정책 (v3 — 30일 TTL 회귀):
+//   1) DB SELECT (cached_at 포함)
+//   2) 미스          → PdmaApiClient HTTPS GET → DB UPSERT → 반환
+//   3) hit + fresh   → DB 응답 (외부 호출 없음)
+//   4) hit + stale   → PdmaApiClient HTTPS GET → DB UPSERT → 반환  ⭐
+//   주기 갱신은 CSV 일괄 적재 (import_pdma.py) 로 별도 수행 가능.
 //
-// 시그니처:
-//   get_from_db()    — DB 만 (동기). 빠름.
-//   get_or_fetch()   — 캐시 hit 만 즉시 반환. 미스 시 백그라운드 fetch + std::nullopt.
-//                       (즉, 다음 호출 시 캐시 hit 되도록 채워두는 용도)
-//   cache()          — 외부 API 응답을 DB 에 UPSERT (PdmaApiClient 콜백에서 호출).
+// TTL 기본 30일. 환경변수 MEDIBRIDGE_PDMA_CACHE_TTL_DAYS 로 변경 (0 = 무한).
 // =====================================================
 #include "DrugOverviewCache.h"
 #include "PdmaApiClient.h"
@@ -19,7 +18,9 @@
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Exception.h>
 
+#include <cstdlib>
 #include <iostream>
+#include <string>
 
 namespace orm = drogon::orm;
 
@@ -51,22 +52,42 @@ std::string extract(const Json::Value& src, const char* key)
     return src.isMember(key) && src[key].isString() ? src[key].asString() : "";
 }
 
+/// 환경변수에서 TTL 일수 읽기 — 기본 30, 0 = 무한
+int ttl_days()
+{
+    static int cached = []() {
+        if (const char* env = std::getenv("MEDIBRIDGE_PDMA_CACHE_TTL_DAYS")) {
+            try {
+                int n = std::stoi(env);
+                if (n >= 0) return n;
+            } catch (...) {}
+        }
+        return 30;
+    }();
+    return cached;
+}
+
 } // anonymous
 
-std::optional<Json::Value>
-DrugOverviewCache::get_from_db(const std::string& item_code)
+std::optional<std::pair<Json::Value, int>>
+DrugOverviewCache::get_from_db_with_age(const std::string& item_code)
 {
     auto db = medibridge::database::Connection::instance().client();
     if (!db) return std::nullopt;
 
     try {
+        // DATEDIFF(NOW(), cached_at) = 경과 일수
         auto rows = db->execSqlSync(
             "SELECT item_code, efficacy_text, usage_text, warning_text, "
-            "       caution_text, interaction_text, side_effect_text, storage_text "
+            "       caution_text, interaction_text, side_effect_text, storage_text, "
+            "       DATEDIFF(NOW(), cached_at) AS age_days "
             "FROM drug_overview WHERE item_code = ? LIMIT 1",
             item_code);
         if (rows.empty()) return std::nullopt;
-        return row_to_json(rows[0]);
+        const int age = rows[0]["age_days"].isNull()
+                      ? 0
+                      : rows[0]["age_days"].as<int>();
+        return std::make_pair(row_to_json(rows[0]), age);
     } catch (const orm::DrogonDbException& e) {
         std::cerr << "[DrugOverviewCache] SQL error: " << e.base().what() << std::endl;
         return std::nullopt;
@@ -76,18 +97,33 @@ DrugOverviewCache::get_from_db(const std::string& item_code)
 std::optional<Json::Value>
 DrugOverviewCache::get_or_fetch(const std::string& item_code)
 {
-    // 1) 캐시 hit
-    if (auto cached = get_from_db(item_code); cached.has_value()) return cached;
+    const int ttl = ttl_days();
+    auto cached   = get_from_db_with_age(item_code);
 
-    // 2) 미스 — 백그라운드 fetch 트리거 (다음 호출 시 hit 되도록).
-    //    호출 즉시 결과 필요한 경우엔 라우터 단에서 PdmaApiClient::fetch_drug_overview
-    //    + cache() 직접 콜백 체이닝.
+    // 1) hit fresh — 즉시 반환
+    if (cached.has_value()) {
+        const int age = cached->second;
+        if (ttl == 0 || age < ttl) {
+            return cached->first;
+        }
+        std::cout << "[DrugOverviewCache] stale (age=" << age
+                  << " days, ttl=" << ttl << ") — refresh trigger: "
+                  << item_code << std::endl;
+    }
+
+    // 2) miss 또는 stale — 외부 API 비동기 fetch 트리거.
+    //    다음 호출에 fresh hit. 즉시 동기 응답 필요한 라우터는 직접
+    //    PdmaApiClient::fetch_drug_overview() + cache() 체이닝.
     PdmaApiClient::instance().fetch_drug_overview(item_code,
         [item_code](const Json::Value& resp, int status) {
             if (status == 200 && !resp.isNull()) {
                 cache(item_code, resp);
             }
         });
+
+    // stale 인 경우 — 새 응답이 올 때까지는 stale 본문이라도 반환 (사용성 우선).
+    // miss 인 경우 — nullopt 로 클라가 재시도하게 함.
+    if (cached.has_value()) return cached->first;
     return std::nullopt;
 }
 

@@ -467,7 +467,8 @@ curl -v http://10.10.10.97:8001/health
 | `MEDIBRIDGE_STORAGE_TOKEN_TTL` | `300` | PUT/GET 토큰 만료 (초) |
 | `MEDIBRIDGE_STORAGE_MAX_BYTES` | `10485760` | 업로드 최대 (10MB) |
 | `MEDIBRIDGE_STORAGE_CLEANUP_INTERVAL` | `300` | PENDING 청소 잡 인터벌 (초) · 0 = 비활성 |
-| `MEDIBRIDGE_PDMA_KEY` | (없음) | 식약처 OpenAPI 키 (운영 시 e약은요 lazy 호출) |
+| `MEDIBRIDGE_PDMA_KEY` | (없음) | 식약처 OpenAPI 키 (운영 시 e약은요 lazy 호출). 공공데이터포털 data.go.kr 에서 발급 |
+| `MEDIBRIDGE_PDMA_CACHE_TTL_DAYS` | `30` | e약은요 lazy 캐시 TTL (일). 0 = 무한. `cached_at` 으로부터 N일 경과 시 외부 API 재호출 |
 | `MEDIBRIDGE_INFERENCE_LLM_BASE` | `http://10.10.10.128:8002` | LLM PC URL |
 | `MEDIBRIDGE_INFERENCE_VISION_BASE` | `http://10.10.10.120:8003` | Vision PC URL |
 | `MEDIBRIDGE_TEST_MODE` | `false` | `true` 시 추론·외부저장 우회 → DB seed 응답 |

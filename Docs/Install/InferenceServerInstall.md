@@ -6,11 +6,11 @@
 | **대상 OS** | Ubuntu 24.04 LTS |
 | **하드웨어** | NVIDIA GPU 권장 (CUDA 호환) |
 | **역할** | YOLO26 알약 검출, PaddleOCR 각인 인식, OpenCV 색·모양 분석, **(확장 fallback) Whisper STT**, LLM 의도 분류기·등록 LLM·RAG |
-| **버전** | v0.1 (스켈레톤) |
-| **작성일** | 2026-05-06 |
+| **버전** | v0.2 (LLM PC 부분 실제 셋업 완성) |
+| **작성일** | 2026-05-06 (v0.1) / **개정일 2026-05-15 (v0.2)** |
 | **작성자** | 팀 (3인) |
 
-> ⏳ **본 매뉴얼은 스켈레톤 상태.** 추론 서버 셋업 진입 시 각 절을 채워나간다.
+> 📌 **2026-05-15 v0.2 변경**: LLM PC (`10.10.10.128:8002`) 측 실 셋업 절차 추가 — Python 가상환경 / OpenAI gpt-4.1-nano 기본 / Ollama gemma4:e4b fallback / KURE-v1 임베딩 / Chroma DB / 환경변수 / systemd 단위. Vision PC (`10.10.10.120:8003`) 측은 인효 담당 (스켈레톤 유지).
 >
 > 본 프로젝트 MVP에서는 **음성 STT를 폰의 온디바이스 STT(Galaxy AI)로 처리**하므로 추론 서버에 Whisper는 **확장 fallback** 용도로만 설치한다 (선택).
 
@@ -113,6 +113,99 @@
 
 ---
 
+## 3.A LLM PC 실 셋업 — `10.10.10.128:8002` (2026-05-15 신규)
+
+### 3.A.1 OS·Python 환경
+```bash
+# Ubuntu 24.04 LTS, sudo 권한
+sudo apt update && sudo apt install -y python3.12 python3.12-venv git
+cd /home/medibridge
+git clone <repo> MediBridge   # 또는 SCP 로 코드 복사
+cd MediBridge/InferenceServer
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -U pip wheel
+pip install -r requirements.txt
+```
+
+### 3.A.2 환경변수 (`.env`)
+```bash
+cp .env.sample .env
+# .env 수정 — 시크릿 입력
+#   OPENAI_API_KEY=sk-...
+#   MEDIBRIDGE_LLM_BACKEND=openai (기본)
+#   MEDIBRIDGE_VISION_ENABLED=false   ← LLM PC 는 Vision 비활성
+#   MEDIBRIDGE_LLM_ENABLED=true
+```
+
+### 3.A.3 (선택) Ollama fallback 설치
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e4b              # ~3 GB Q4
+ollama serve &                      # :11434
+# OpenAI 장애 시: MEDIBRIDGE_LLM_BACKEND=ollama 전환
+```
+
+### 3.A.4 KURE-v1 임베딩 모델 사전 다운로드 (선택, 첫 호출 시 자동 다운로드됨)
+```bash
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nlpai-lab/KURE-v1', device='cuda')"
+```
+
+### 3.A.5 RAG 인덱스 빌드 (1회)
+```bash
+# 메인서버 MariaDB 에 접근 가능해야 함 (식약처 데이터가 채워진 상태)
+export MEDIBRIDGE_DB_PASSWORD='...'
+python ../TrainingServer/Scripts/BuildRagIndex.py \
+  --db-host 10.10.10.97 --db-user medibridge_app \
+  --db-name medibridge \
+  --embedding nlpai-lab/KURE-v1 --device cuda \
+  --out ./chroma_db
+```
+
+### 3.A.6 서버 실행
+```bash
+# 개발 모드
+set -a; source .env; set +a
+python Main.py
+
+# 또는 uvicorn 직접
+uvicorn Main:app --host 0.0.0.0 --port 8002
+
+# 검증
+curl http://127.0.0.1:8002/health | jq
+curl -X POST http://127.0.0.1:8002/intent/classify \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"이 약 뭐야?"}' | jq
+# 기대: {"category":"PILL_IDENTIFY","confidence":0.9x,"injection_flag":false}
+```
+
+### 3.A.7 systemd 자동 시작 (운영)
+```ini
+# /etc/systemd/system/medibridge-inference.service
+[Unit]
+Description=MediBridge LLM Inference Server
+After=network.target
+
+[Service]
+Type=simple
+User=medibridge
+WorkingDirectory=/home/medibridge/MediBridge/InferenceServer
+EnvironmentFile=/home/medibridge/MediBridge/InferenceServer/.env
+ExecStart=/home/medibridge/MediBridge/InferenceServer/.venv/bin/uvicorn Main:app --host 0.0.0.0 --port 8002
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now medibridge-inference
+sudo systemctl status medibridge-inference
+```
+
+---
+
 ## 4. 설치 완료 체크리스트 (예정)
 
 - [ ] `nvidia-smi` 정상 출력 (드라이버·GPU 인식)
@@ -141,3 +234,4 @@
 | --- | --- | --- | --- |
 | v0.1 | 2026-05-06 | 팀 (3인) | 스켈레톤 작성. NVIDIA·CUDA·Vision·FastAPI·LLM 설치 예정 항목 명시. Whisper는 확장 fallback으로 분리 |
 | **(2026-05-13 메모)** | | | 메인서버 측 인터페이스 확정 — Vision PC 는 `POST /vision/detect_remote` 받음 (페이로드: `{photo_id, storage_url, get_token, mime, purpose}`), 응답 `{candidates:[{item_code,drug_name,confidence,match_keys}], confidence_tier}`. 사진은 `get_token` 으로 데이터 보관 PC(`10.10.10.122:8004`) GET. 자세한 schema: [Api/PillApi.md](../Api/PillApi.md), [Api/MediaApi.md](../Api/MediaApi.md). |
+| **v0.2** | **2026-05-15** | 팀 (3인) | LLM PC 측 실 셋업 §3.A 신규 — Python venv / OpenAI gpt-4.1-nano 기본 / Ollama gemma4:e4b fallback / KURE-v1 임베딩 / Chroma RAG 인덱스 빌드 (BuildRagIndex.py) / systemd 단위. `MEDIBRIDGE_VISION_ENABLED=false` 환경변수로 LLM PC ↔ Vision PC 코드 공유. Vision PC 측은 인효 담당 (스켈레톤 유지). 관련 설계: [LlmInferenceServer_Design.md](../LlmInferenceServer_Design.md). |

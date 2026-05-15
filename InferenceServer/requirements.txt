@@ -32,9 +32,16 @@ paddleocr>=2.8.0
 # OpenCV (색·모양·크기 분석)
 opencv-python>=4.10.0
 
-# ----- LLM (모델은 추후 선정) -----
-# transformers>=4.45.0
-# vllm>=0.6.0   # 또는 ollama 클라이언트
+# ----- LLM Provider (OpenAI gpt-4.1-nano 기본 / Ollama gemma4:e4b fallback) -----
+# OpenAI 호출은 httpx 직접 사용 (이미 위에 포함). 공식 SDK 도 사용 가능:
+# openai>=1.50.0
+
+# ----- 임베딩 + RAG -----
+sentence-transformers>=3.0.0
+chromadb>=0.5.0
+
+# ----- DB (학습 서버 측 BuildRagIndex.py 가 메인 MariaDB 조회) -----
+# pymysql 또는 mysql-connector — TrainingServer/requirements.txt 측에 둠
 
 # ----- 음성 인식 (확장 fallback — MVP 미사용) -----
 # faster-whisper>=1.0.0

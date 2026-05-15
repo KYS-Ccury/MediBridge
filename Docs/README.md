@@ -30,6 +30,8 @@
 | **시연 테스트 결과** ⭐ | [SmokeTest_2026-05-15.md](SmokeTest_2026-05-15.md) | GUI 시연 결과 (통과·보류·실패·피드백 + 재시연 가이드) |
 | **팀 회의록** ⭐ | [Meeting_2026-05-15.md](Meeting_2026-05-15.md) | 2026-05-15 — LLM·RAG 진입 결정 + 이미지 추론서버 진단 |
 | **LLM 모델 후보 비교** ⭐ | [LLM_Model_Candidates.md](LLM_Model_Candidates.md) | **v2** — VRAM 16 GB 한도 + 한국어 임베딩 (KURE-v1) + LLM (Gemma 4 E4B 시작) + 외부 API fallback (gpt-4o-mini) + `LlmProvider` 추상화 |
+| **LLM PC 설계서** ⭐ | [LlmInferenceServer_Design.md](LlmInferenceServer_Design.md) | LLM PC (10.10.10.128:8002) 라우터·LlmProvider·RAG·프롬프트·안전 정책·Phase 단계 |
+| **Crop 영속화 설계** ⭐ | [CropPersistence_Design.md](CropPersistence_Design.md) | 식별 결과·이력에 박싱된 알약 crop 사진 영속 설계 (Phase 4 — Vision 안정화 후) |
 
 ---
 

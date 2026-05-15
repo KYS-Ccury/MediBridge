@@ -11,6 +11,60 @@
 
 ## [Unreleased]
 
+### Added (2026-05-15 — LLM PC 본 구현 + TTL 30일 회귀 + Crop 영속화 설계)
+
+#### A. e약은요 캐시 TTL 30일 정책 회귀 (commit pending)
+v2.0 의 "TTL 폐기" 결정 철회 — 데이터 신선도 확보 위해 동기 refresh 정책 부활.
+
+- `MainServer/Services/Pdma/DrugOverviewCache.{h,cpp}` — `get_or_fetch()` 가 stale 검사 수행
+  - DB miss → 외부 API → UPSERT → 응답
+  - DB hit + fresh (`cached_at < 30d`) → DB 응답
+  - DB hit + stale → 외부 API → UPSERT → 응답 (사용성 위해 stale 본문도 반환)
+- 환경변수 `MEDIBRIDGE_PDMA_CACHE_TTL_DAYS` 신규 (기본 30, 0 = 무한)
+- `DATEDIFF(NOW(), cached_at)` 으로 경과 일수 계산
+- `Docs/요구사항_분석서_ver2.md` FR-B3-07 정정 (v2.0 폐기 → v2.2 회귀)
+- `Docs/system_prompt.md` §8 환경변수 표에 `MEDIBRIDGE_PDMA_CACHE_TTL_DAYS` 추가
+
+#### B. LLM PC (InferenceServer) 본 구현 — Vision 제외 전체 채움
+회의 결정 따라 OpenAI gpt-4.1-nano 기본 + Ollama gemma4:e4b fallback 채택.
+
+- `Docs/LlmInferenceServer_Design.md` 신규 — 전체 설계 (라우터·LlmProvider·RAG·프롬프트·안전·Phase)
+- `InferenceServer/Config.py` — LLM Provider · 임베딩 · Chroma · 포트 환경변수 통합
+- `InferenceServer/Main.py` — `MEDIBRIDGE_VISION_ENABLED` / `MEDIBRIDGE_LLM_ENABLED` 환경변수
+  분기 (LLM PC ↔ Vision PC 코드 공유)
+- `InferenceServer/Llm/LlmProvider.py` 신규 — Protocol + 팩토리 + 싱글톤
+- `InferenceServer/Llm/OpenAIProvider.py` 신규 — gpt-4.1-nano 기본, httpx 직접 호출
+- `InferenceServer/Llm/OllamaProvider.py` 신규 — gemma4:e4b fallback
+- `InferenceServer/Llm/RagClient.py` 신규 — Chroma + KURE-v1, 비의료 섹션 자동 필터
+- `InferenceServer/Llm/PromptTemplates.py` 신규 — 4종 시스템 프롬프트 정본
+- `InferenceServer/Llm/OutputSanitizer.py` 신규 — 단정 표현 차단 (12종 패턴)
+- `InferenceServer/Llm/IntentClassifier.py` — 채움 (501 → 200)
+- `InferenceServer/Llm/OnboardingNormalizer.py` — 채움 + RAG 검증
+- `InferenceServer/Llm/OnboardingDisambiguator.py` — 채움 + OutputSanitizer 검사
+- `InferenceServer/Llm/NonMedicalSummarizer.py` — 채움 + 의료 키워드 입력 거부 + RAG 보강
+- `InferenceServer/Routers/Intent.py` — 채움
+- `InferenceServer/Routers/Onboarding.py` — 채움
+- `InferenceServer/Routers/Summary.py` — 채움 + 400 의료 키워드 거부
+- `InferenceServer/requirements.txt` — sentence-transformers, chromadb 추가
+- `InferenceServer/.env.sample` 신규 — 모든 환경변수 샘플
+- `TrainingServer/Scripts/BuildRagIndex.py` 신규 — MariaDB → Chroma 인덱스 빌드
+- `TrainingServer/requirements.txt` — sentence-transformers, chromadb, pymysql 추가
+- `Docs/Install/InferenceServerInstall.md` v0.1 → v0.2 — §3.A LLM PC 실 셋업
+  (venv · OpenAI · Ollama · KURE-v1 · BuildRagIndex · systemd) 신규
+
+#### C. Crop 영속화 설계 (구현은 Phase 4)
+- `Docs/CropPersistence_Design.md` 신규 — 식별 결과·이력 화면에 알약 박싱 사진 표시
+  - DB 마이그레이션 003 (photo_storage.parent_photo_id + IDENTIFY_CROP purpose + intake_logs.crop_photo_id)
+  - MediaApi v0.3 / PillApi v0.4 / HistoryApi v0.2 변경 명세
+  - Vision PC pseudocode (crop N개 → 보관 PC PUT N회) — 인효 협업 사항
+  - 작업량 산정 (~14-16시간), Vision PC YOLO 안정화 후 진입 권장
+
+#### Docs 갱신
+- `Docs/README.md` — LlmInferenceServer_Design + CropPersistence_Design 인덱스 추가
+- `Docs/CHANGELOG.md` — 본 항목
+
+---
+
 ### Changed (2026-05-15 — LLM 모델 셋 재설계 v2: 16GB VRAM 한도 + 한국어 임베딩 + 외부 API)
 
 회의 후속 제약 추가 반영:

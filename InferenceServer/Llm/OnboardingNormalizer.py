@@ -1,12 +1,19 @@
 """
-OnboardingNormalizer — 폰 STT 약명 정규화 + 식약처 캐시 후보 검색
+OnboardingNormalizer — STT 약명 정규화 (싱글톤)
 
-✅ RAG 허용 영역 (등록 단계, 비의료).
+✅ Onboarding RAG 허용 영역 (FR-A6).
+음성 인식 결과 텍스트에서 약품명만 추출·정규화.
+RAG 로 추가 검증 가능 (Chroma pdma_overview).
 """
-from typing import List, Optional
+from typing import Optional
+
 from loguru import logger
 
-from Schemas.OnboardingSchema import DrugCandidate
+from Schemas.OnboardingSchema import NormalizeResponse, DrugCandidate
+from Llm.InjectionFilter import InjectionFilter
+from Llm.LlmProvider import make_provider
+from Llm.PromptTemplates import NORMALIZE_SYSTEM
+from Llm.RagClient import RagClient
 
 
 class OnboardingNormalizer:
@@ -19,30 +26,69 @@ class OnboardingNormalizer:
         return cls._instance
 
     def __init__(self) -> None:
-        self.model = None
-        self.rag_index = None    # 식약처 낱알식별 임베딩 인덱스
+        self._provider = None
         self.is_loaded: bool = False
 
     def load_model(self) -> None:
-        """LLM + 식약처 데이터 RAG 인덱스 로딩"""
-        # TODO (영역 A 분담):
-        #   - LLM 클라이언트 초기화
-        #   - 식약처 낱알식별 임베딩 인덱스 로드 (FAISS, ChromaDB 등)
-        logger.info("[OnboardingNormalizer] load_model TODO")
-        self.is_loaded = False
+        try:
+            self._provider = make_provider()
+            # RAG 는 첫 검색 시 lazy load — 여기서는 시도만
+            RagClient.instance().load()
+            self.is_loaded = True
+            logger.info(f"[OnboardingNormalizer] ready — provider={self._provider.name}")
+        except Exception as e:
+            logger.exception(f"[OnboardingNormalizer] load_model 실패: {e}")
+            self.is_loaded = False
 
-    def normalize(self, raw_text: str) -> List[DrugCandidate]:
-        """
-        STT 결과 약명 → 정규화 + 식약처 캐시 검색 후보.
+    def normalize(self, raw_text: str) -> NormalizeResponse:
+        # 1) 인젝션 검사 — 약명 발화에 인젝션 시도면 빈 후보로 거부
+        if InjectionFilter.detect(raw_text):
+            logger.warning(f"[OnboardingNormalizer] 인젝션 의심 — 빈 응답: {raw_text[:60]}")
+            return NormalizeResponse(candidates=[])
 
-        Args:
-            raw_text: 폰 STT 결과 (발음 오류·띄어쓰기 가능)
+        if not self.is_loaded or self._provider is None:
+            return NormalizeResponse(candidates=[])
 
-        Returns:
-            식약처 매칭 약명 후보 리스트
-        """
-        # TODO (영역 A 분담):
-        #   1. RAG 검색 — 식약처 낱알식별 캐시에서 유사 약명 후보 추출
-        #   2. LLM 정규화 — 발음·띄어쓰기 보정
-        #   3. DrugCandidate 리스트 반환
-        return []
+        # 2) LLM 추출
+        resp = self._provider.chat(
+            system=NORMALIZE_SYSTEM,
+            user=raw_text,
+            format="json",
+        )
+        if resp.error or resp.json_obj is None:
+            logger.warning(f"[OnboardingNormalizer] LLM 오류 err={resp.error}")
+            return NormalizeResponse(candidates=[])
+
+        # 3) 스키마 변환
+        candidates: list[DrugCandidate] = []
+        for c in resp.json_obj.get("candidates", [])[:5]:
+            try:
+                normalized = str(c.get("normalized", "")).strip()
+                if not normalized:
+                    continue
+                confidence = float(c.get("confidence", 0.5))
+                confidence = max(0.0, min(1.0, confidence))
+                raw_phrase = str(c.get("raw_phrase", "")).strip() or None
+                candidates.append(DrugCandidate(
+                    drug_name=normalized,
+                    confidence=confidence,
+                    note=raw_phrase,
+                ))
+            except Exception:
+                continue
+
+        # 4) (선택) RAG 로 식약처 등재 약품인지 검증 — 일치도 낮은 후보는 confidence 감소
+        rag = RagClient.instance()
+        if rag.is_loaded() and candidates:
+            for cand in candidates:
+                hits = rag.search_overview(cand.drug_name, n_results=1)
+                if hits:
+                    meta = hits[0].get("metadata") or {}
+                    if "item_code" in meta:
+                        cand.item_code = meta["item_code"]
+                else:
+                    # 검색 0건이면 신뢰도 깎음 (검증 실패)
+                    cand.confidence = min(cand.confidence, 0.4)
+
+        logger.info(f"[OnboardingNormalizer] candidates={len(candidates)} latency={resp.latency_ms}ms")
+        return NormalizeResponse(candidates=candidates)
