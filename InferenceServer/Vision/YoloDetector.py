@@ -27,6 +27,32 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _white_balance_global(bgr: "np.ndarray") -> "np.ndarray":
+    """전체 장면 기준 화이트밸런스 (white-patch, 상위 백분위).
+
+    전체 이미지의 채널별 상위 백분위(=장면의 가장 밝은 = 본래 흰색
+    이어야 할 하이라이트) 값을 기준으로 각 채널을 정규화 → 조명
+    캐스트 제거. gray-world 는 따뜻한 나무 테이블이 평균을 끌어
+    캐스트를 못 걷었음. white-patch 는 밝은 하이라이트(조명색을
+    반영)를 기준 삼아 더 견고. 단일 crop 이 아닌 전체 장면이라
+    개별 알약 고유색은 보존. 과보정 방지 위해 게인 [0.5,2.2] 클램프.
+    """
+    try:
+        f = bgr.astype(np.float32)
+        refs = [float(np.percentile(f[:, :, c], 98.0)) for c in range(3)]
+        target = max(refs)               # 가장 밝은 채널 기준
+        if target <= 1.0:
+            return bgr
+        for c in range(3):
+            if refs[c] > 1.0:
+                gain = target / refs[c]
+                gain = max(0.5, min(2.2, gain))
+                f[:, :, c] *= gain
+        return np.clip(f, 0, 255).astype(np.uint8)
+    except Exception:
+        return bgr
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, "").strip() or default)
@@ -154,6 +180,16 @@ class YoloDetector:
                     f"[YoloDetector] 뷰파인더 크롭 {ow}x{oh} "
                     f"→ {x1 - x0}x{y1 - y0} (top={crop_top} bot={crop_bot})"
                 )
+
+        # ⭐ 2026-05-15 — 전역 화이트밸런스 (전체 장면 기준).
+        #   차가운 조명 캐스트로 흰 알약이 파란색, 파스텔 알약이
+        #   왜곡됨. crop 단위 WB 는 알약이 프레임을 꽉 채워 알약
+        #   자체를 무채색으로 만들어버림(노랑·분홍 → 흰색).
+        #   → 배경(테이블)을 포함한 '전체 이미지'의 상위 백분위로
+        #     조명을 추정·보정하면 전역 캐스트만 제거되고 개별 알약
+        #     고유색은 보존된다. crop·OCR·shape 모두 보정본 사용.
+        if _env_float("MEDIBRIDGE_YOLO_WB", 1.0) >= 0.5:
+            img = _white_balance_global(img)
 
         # 뷰파인더 크롭으로 카메라 UI 가 제거됐으므로 conf 를 낮춰도
         # 안전. 0.60 → 0.40 (다중 알약 중 신뢰도 낮은 개체도 포착).
