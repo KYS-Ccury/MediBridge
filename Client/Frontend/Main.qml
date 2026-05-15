@@ -18,11 +18,16 @@ import "Components"
 ApplicationWindow {
     id: app_window
     visible: true
-    width: 1024
-    height: 720
-    // 최소 크기 — 이 이하로 줄여도 내부 콘텐츠가 잘리지 않도록 페이지마다 ScrollView 사용
+    // 기본 크기 — 가장 긴 페이지(CameraPage 뷰파인더 / HomePage 전체)가
+    //   잘리지 않는 높이로 연다. 화면이 더 작으면 화면에 맞춰 축소하고
+    //   그때만 ScrollView 가 동작(안전장치).
+    width:  Math.min(1100, Screen.desktopAvailableWidth  - 40)
+    height: Math.min(960,  Screen.desktopAvailableHeight - 60)
+    // 시작 시 화면 중앙
+    x: (Screen.desktopAvailableWidth  - width)  / 2
+    y: (Screen.desktopAvailableHeight - height) / 2
     minimumWidth: 800
-    minimumHeight: 600
+    minimumHeight: 640
     title: qsTr("메디브릿지")
 
     // Material 테마 (노인층 친화 — 큰 글자, 명확한 색상)
