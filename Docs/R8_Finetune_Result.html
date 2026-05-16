@@ -24,13 +24,21 @@ small.note{color:#5B6478}
 
 <h1>R8 — 알약 각인 OCR Fine-tuning 50종 파일럿 결과</h1>
 <p><small class="note">측정일 2026-05-16 · PP-OCRv4(en) rec 60 epoch
-(best 54) · 데이터 AIHub 단일경구약제 Validation 50종 ·
-검증·추론 PaddleOCR 정식 도구 · 모든 알약 이미지는 실제 crop
-(사용자 육안 판단용)</small></p>
+(best 54) · 데이터 AIHub 단일경구약제 Validation · 검증·추론
+PaddleOCR 정식 도구 · 모든 알약 이미지는 실제 crop (사용자 육안
+판단용)</small></p>
+<div class="box"><b>※ 50종 vs 47종 — 용어 정의</b><br>
+<b>50종</b> = AIHub Validation 단일경구약제의 전체 고유 약 코드 수
+(데이터셋 규모, 본 파일럿 명칭). <b>47종</b> = 그중 앞면각인
+텍스트가 유효해 <b>실제 OCR 학습·평가에 사용된 약</b> (나머지
+3종은 print_front 가 비었거나 "마크/선/할선" 등 읽을 각인이
+없어 학습 제외). <b>99.94% (Eval A) 는 이 47종의 held-out 사진
+기준</b>입니다. 아래 §2 표는 데이터셋 전체 50종을 나열하되,
+각인이 비어 학습 제외된 행은 '앞면각인' 칸으로 식별 가능.</div>
 
 <h2>1. 핵심 결과</h2>
 <div>
- <span class="kpi">99.94%<small>fine-tuned · 학습 47종 held-out 사진(Eval A)</small></span>
+ <span class="kpi">99.94%<small>fine-tuned · 학습한 47종의 held-out 사진(Eval A)</small></span>
  <span class="kpi">~0.2%<small>사전학습 PP-OCRv4(en) · 동일 셋</small></span>
  <span class="kpi" style="background:#C62828">0 / 5<small>촬영 9알약 판독대상 정답(FT, Eval B)</small></span>
 </div>
