@@ -137,3 +137,6 @@ InferenceServer/.env
 # HuggingFace 모델 캐시 (KURE-v1, bge-m3 등 자동 다운로드)
 .cache/huggingface/
 hf_cache/
+
+# 외부 참조 데이터(식약처/심평원 등) — git 추적 금지 (대용량·재배포 주의)
+MainServer/Data/

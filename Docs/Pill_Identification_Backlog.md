@@ -65,6 +65,21 @@
 | A5 | 적재 후 검증(행수·샘플·식별 PoC) → 실험문서 후속 R | AI 가능 | A3/A4 후 |
 | A6 | (선택) e약은요·DUR 기타유형 데이터셋 추가 | 추후 | 약정보 표시·완전성 필요 시 |
 
+### ▶ 데이터 출처·보관 위치 (정확 기재)
+
+| 데이터 | 출처(공식) | 형태 | 수령/상태 | 로컬 보관 |
+|---|---|---|---|---|
+| **병용금기약물** | data.go.kr **15089525** 한국의약품안전관리원_병용금기약물_20240625 (https://www.data.go.kr/data/15089525/fileData.do) | 파일 CSV (키 불요) | **2026-05-16 수령** · 159,504,767 B · 542,996 행 · 인코딩 CP949(EUC-KR) 추정 | `MainServer/Data/pdma/한국의약품안전관리원_병용금기약물_20240625.csv` ★**.gitignore(`MainServer/Data/`) — git 미추적, 대용량·재배포주의** |
+| **의약품 낱알식별 정보** | data.go.kr **15057639** 식품의약품안전처_의약품 낱알식별 정보 (https://www.data.go.kr/data/15057639/openapi.do) | REST OpenAPI(JSON/XML) | **미수령** — API 키 발급 대기(A1) | (키 발급 후 `import_pdma.py` 로 직접 적재) |
+| **AIHub 실 50종 메타** | AIHub 경구약제 이미지 데이터(Validation 단일경구약제) — Vision PC `…/MediBridge/DATA/01.데이터/2.Validation` | JSON 라벨 → SQL 추출 | 적재 완료(2026-05-16) | 적재 SQL: `MainServer/Database/Seeds/aihub_real_50_pills.sql` (저장소 추적) |
+
+API 키 보관: `MEDIBRIDGE_PDMA_KEY` 를 **`MainServer/.env`**
+(`.gitignore` 로 git 미추적)에 기입. 양식=`MainServer/.env.example`
+(저장소 추적, 플레이스홀더만). 런처 `medibridge-up-prod.sh`
+가 기동 시 `MainServer/.env` 자동 source. **키를 .env.example
+이나 스크립트·문서 등 추적 파일에 절대 적지 말 것(GitHub 유출
+방지).**
+
 **현 진척**: AIHub Validation 유래 **실 50종만 적재 완료**
 (2026-05-16). 전국 전체는 **A1 미해결로 보류** — A1 이 모든
 후속(C1~C5 PoC)의 임계 경로(critical path).

@@ -48,8 +48,14 @@ export MEDIBRIDGE_ENV='development'
 export MEDIBRIDGE_INFERENCE_LLM_BASE='http://10.10.10.128:8002'
 export MEDIBRIDGE_INFERENCE_VISION_BASE='http://10.10.10.120:8003'
 
-# Pdma 키 (식약처 OpenAPI) — 미설정 시 e약은요 lazy 호출 graceful skip
-# export MEDIBRIDGE_PDMA_KEY='발급받은_식약처_OpenAPI_키'
+# Pdma 키 (식약처 OpenAPI) 등 비밀값 — MainServer/.env 에서 로드.
+#   MainServer/.env 는 .gitignore 로 git 추적 안 됨(키 유출 방지).
+#   양식은 MainServer/.env.example 참고. 파일 없으면 graceful skip.
+_ENV_FILE="${ROOT}/.env"
+if [[ -f "${_ENV_FILE}" ]]; then
+  set -a; source "${_ENV_FILE}"; set +a
+  echo "[prod-up] ${_ENV_FILE} 로드됨 (비밀값 주입)"
+fi
 
 cd "${ROOT}"
 nohup "${BIN}" > "${LOG}" 2>&1 &
