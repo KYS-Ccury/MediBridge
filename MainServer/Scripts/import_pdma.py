@@ -80,10 +80,15 @@ PILL_COLUMN_MAP: Dict[str, List[str]] = {
 
 DUR_COLUMN_MAP: Dict[str, List[str]] = {
     "dur_id":           ["DUR_SEQ", "TYPE_CODE", "DUR_ID", "고유번호"],
-    "base_item_code":   ["INGR_CODE", "ITEM_SEQ", "기준품목코드", "성분코드A"],
-    "target_item_code": ["MIXTURE_INGR_CODE", "MIXTURE_ITEM_SEQ", "병용품목코드", "성분코드B"],
+    # 병용금기는 성분 기반 → 성분코드 우선(의미 정확). 데이터셋
+    # (data.go.kr 15089525)의 실제 한글 컬럼명 추가.
+    "base_item_code":   ["성분코드1", "INGR_CODE", "제품코드1",
+                         "ITEM_SEQ", "기준품목코드", "성분코드A"],
+    "target_item_code": ["성분코드2", "MIXTURE_INGR_CODE", "제품코드2",
+                         "MIXTURE_ITEM_SEQ", "병용품목코드", "성분코드B"],
     "dur_type":         ["TYPE_NAME", "DUR_TYPE", "유형", "DUR유형"],
-    "prohibit_reason":  ["PROHBT_CONTENT", "prohbtContent", "금기사유", "병용금기내용"],
+    "prohibit_reason":  ["PROHBT_CONTENT", "prohbtContent",
+                         "금기사유", "병용금기내용"],
 }
 
 OVERVIEW_COLUMN_MAP: Dict[str, List[str]] = {

@@ -73,6 +73,32 @@
 | **의약품 낱알식별 정보** | data.go.kr **15057639** 식품의약품안전처_의약품 낱알식별 정보 (https://www.data.go.kr/data/15057639/openapi.do) | REST OpenAPI(JSON/XML) | **미수령** — API 키 발급 대기(A1) | (키 발급 후 `import_pdma.py` 로 직접 적재) |
 | **AIHub 실 50종 메타** | AIHub 경구약제 이미지 데이터(Validation 단일경구약제) — Vision PC `…/MediBridge/DATA/01.데이터/2.Validation` | JSON 라벨 → SQL 추출 | 적재 완료(2026-05-16) | 적재 SQL: `MainServer/Database/Seeds/aihub_real_50_pills.sql` (저장소 추적) |
 
+### ▶ DUR 적재 차단 발견 (2026-05-16 실측 — 중요)
+
+병용금기 CSV(15089525, 54만 행)를 `import_pdma.py dur` 로
+적재 시도 → **FK 위반으로 차단**(부분삽입 0, 오염 없음):
+- `dur_interaction_cache.base_item_code` 에 `FOREIGN KEY →
+  pill_identification(item_code)` 강제. 스키마가 DUR 을
+  **품목기준코드 쌍** 으로 모델링.
+- 그러나 CSV 는 **성분 쌍**(성분코드 134901ATB / EDI 제품코드
+  643702030). 어느 것도 우리 품목기준코드(item_seq)와 불일치
+  → FK 위반.
+- → 데이터는 받았으나 **현 스키마로 직접 적재 불가**. 억지
+  적재(FK 해제 + 고아행 54만)는 비기능·DB오염이라 **안 함**.
+
+**해소 옵션 (둘 다 A1 선행 필수)**
+
+| 옵션 | 내용 | 트레이드오프 |
+|---|---|---|
+| A | 낱알식별+주성분으로 *성분쌍→해당 성분 포함 전 품목쌍* 전개해 품목 기반 적재 | 현 스키마 부합 / 조합 폭발(대량) |
+| B | DUR 을 성분레벨 테이블로 스키마 변경 + 조회 시 pill→성분 해소 | 장기 정합 / 마이그레이션·코드변경 |
+
+**A7 (신규 액션)**: A1(낱알식별/주성분) 확보 후 옵션 A/B 중
+택1 설계·구현 → 그때 본 CSV 적재. 현재는 CSV 를
+`MainServer/Data/pdma/` 에 보관(대기). `import_pdma.py` 의
+DUR 한글 컬럼 매핑(성분코드1/2·금기사유 등)은 선반영 완료
+(데이터 준비되면 즉시 사용 가능).
+
 API 키 보관: `MEDIBRIDGE_PDMA_KEY` 를 **`MainServer/.env`**
 (`.gitignore` 로 git 미추적)에 기입. 양식=`MainServer/.env.example`
 (저장소 추적, 플레이스홀더만). 런처 `medibridge-up-prod.sh`
